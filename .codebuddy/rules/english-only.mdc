@@ -1,0 +1,16 @@
+---
+description: All output content must use English, except for i18n configuration files
+globs:
+alwaysApply: true
+---
+
+All output content must use English, except for internationalization (i18n) configuration files. This includes but is not limited to:
+
+- Code comments
+- Variable names, function names, class names
+- Error messages and log messages
+- UI text (unless defined in i18n config files)
+- Commit messages
+- Documentation
+
+**Exception:** i18n configuration files (e.g., locale JSON files, translation resource files) may contain non-English text as required by the target language.

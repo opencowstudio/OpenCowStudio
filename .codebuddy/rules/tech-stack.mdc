@@ -1,0 +1,62 @@
+---
+description: Project tech stack and directory structure conventions for this Nuxt full-stack application
+globs:
+alwaysApply: true
+---
+
+# Tech Stack & Directory Structure
+
+This is a **Nuxt full-stack application** (Nuxt 4 + Vue 3 + TypeScript). It covers both frontend and backend within a single project.
+
+## Tech Stack
+
+- **Full-Stack Framework:** Nuxt 4 (Vue 3 + Vue Router + Vite)
+- **Language:** TypeScript
+- **Package Manager:** pnpm
+
+## Capabilities
+
+The project includes the following functional areas:
+
+1. **Client-Side Rendering (CSR):** Interactive Vue components that run in the browser
+2. **Server-Side Rendering (SSR):** Nuxt's hybrid rendering for SEO and performance
+3. **Server API:** Nuxt server routes (`server/api/`) for backend endpoints
+4. **Internationalization (i18n):** Multi-language support via `i18n/` locale configuration files
+5. **Database:** Server-side database access layer
+6. **Unit Testing:** Test suites for both frontend and backend code
+
+## Directory Structure
+
+```
+OpenCowStudio/
+├── app/                        # Frontend application (Nuxt 4 convention)
+│   ├── app.vue                 # Root application component
+│   ├── pages/                  # File-based routing (SSR + CSR pages)
+│   ├── components/             # Reusable Vue components
+│   ├── composables/            # Vue composables (auto-imported by Nuxt)
+│   └── layouts/                # Page layout templates
+├── server/                     # Backend (Nitro server engine)
+│   ├── api/                    # API route handlers (auto-registered)
+│   ├── middleware/             # Server middleware
+│   ├── utils/                  # Server-side utilities
+│   └── database/               # Database access layer & queries
+├── i18n/                       # Internationalization configuration
+│   ├── locales/                # Locale JSON files (e.g., en.json, zh.json)
+│   └── config/                 # i18n module configuration
+├── public/                     # Static assets served at root
+├── tests/                      # Unit tests
+│   ├── unit/                   # Unit test files
+│   └── fixtures/               # Test fixtures and mocks
+├── nuxt.config.ts              # Nuxt configuration entry
+├── tsconfig.json               # TypeScript configuration
+└── package.json                # Dependencies and scripts
+```
+
+## Conventions
+
+- Follow Nuxt 4 directory conventions (`app/` directory for frontend code)
+- Server API routes are defined in `server/api/` and auto-registered by Nitro
+- Vue composables in `app/composables/` are auto-imported by Nuxt
+- i18n locale files in `i18n/locales/` may contain non-English text per the target language
+- Database queries and models should be placed under `server/database/`
+- Unit tests mirror the source structure under `tests/`

@@ -3,10 +3,16 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "build": "nuxt build",
     "dev": "nuxt dev --open",
+    "dev:test": "nuxt dev --dotenv .env.test --open",
+    "dev:prod": "nuxt dev --dotenv .env.production --open",
+    "build": "nuxt build",
+    "build:test": "nuxt build --dotenv .env.test",
+    "build:prod": "nuxt build --dotenv .env.production",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
+    "start": "node .output/server/index.mjs",
+    "test": "nuxt build --dotenv .env.test && vitest run",
     "postinstall": "nuxt prepare"
   },
   "dependencies": {

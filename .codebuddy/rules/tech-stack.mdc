@@ -14,6 +14,23 @@ This is a **Nuxt full-stack application** (Nuxt 4 + Vue 3 + TypeScript). It cove
 - **Language:** TypeScript
 - **Package Manager:** pnpm
 
+## Environment Variables
+
+The project uses `.env` files to manage environment-specific configuration, following Nuxt's built-in runtime config convention:
+
+| File | Environment | Description |
+|------|-------------|-------------|
+| `.env` | Development | Default environment variables for local development |
+| `.env.test` | Testing | Environment variables used when running unit/integration tests |
+| `.env.production` | Production | Environment variables for production deployment |
+
+### Conventions
+
+- Variables prefixed with `NUXT_` are automatically mapped to Nuxt runtime config (e.g., `NUXT_API_KEY` → `runtimeConfig.apiKey`)
+- Secrets (API keys, database credentials, etc.) should **never** be committed — only `.env.example` with placeholder values is tracked in version control
+- Use `useRuntimeConfig()` on the server side to access runtime config values
+- Use `useRuntimeConfig().public` on the client side for public (non-secret) config values
+
 ## Capabilities
 
 The project includes the following functional areas:
@@ -47,6 +64,10 @@ OpenCowStudio/
 ├── tests/                      # Unit tests
 │   ├── unit/                   # Unit test files
 │   └── fixtures/               # Test fixtures and mocks
+├── .env                        # Development environment variables (git-ignored)
+├── .env.test                   # Testing environment variables (git-ignored)
+├── .env.production             # Production environment variables (git-ignored)
+├── .env.example                # Environment variable template with placeholder values (tracked)
 ├── nuxt.config.ts              # Nuxt configuration entry
 ├── tsconfig.json               # TypeScript configuration
 └── package.json                # Dependencies and scripts

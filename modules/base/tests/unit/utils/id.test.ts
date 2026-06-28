@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { generateGuid, generateId } from '~/server/utils/id'
+import { generateGuid, generateId } from '../../../src/utils/id'
 
 const UUID_V7_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const BASE55_CHARSET = '0123456789ABCDEFGHJKLMNPQRSTVWXYZabcdefghjkmnpqrstvwxyz'

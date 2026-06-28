@@ -10,15 +10,18 @@
   "scripts": {
     "dev": "nuxi dev",
     "build": "nuxi build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@nuxt/kit": "^4.4.6",
-    "nuxt": "^4.4.6"
+    "nuxt": "^4.4.6",
+    "uuid": "^14.0.1"
   },
   "devDependencies": {
     "@types/node": "^22.19.0",
-    "typescript": "^5.8.0"
+    "typescript": "^5.8.0",
+    "vitest": "^4.1.9"
   },
   "peerDependencies": {
     "nuxt": ">=4.0.0"

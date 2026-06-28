@@ -1,4 +1,5 @@
 import { defineNuxtModule, createResolver } from '@nuxt/kit'
+export { generateGuid, generateId } from './utils/id'
 
 export interface ModuleOptions {
   /**

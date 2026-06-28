@@ -23,7 +23,7 @@ export function generateId(): string {
   const hex = guid.replace(/-/g, '')
   const num = BigInt(`0x${hex}`)
 
-  if (num === 0n) return BASE55_CHARSET[0]
+  if (num === 0n) return BASE55_CHARSET[0]!
 
   const base = BigInt(BASE55_CHARSET.length)
   let result = ''

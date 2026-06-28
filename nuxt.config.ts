@@ -3,6 +3,10 @@ export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: true },
 
+  modules: [
+    '@opencowstudio/base',
+  ],
+
   runtimeConfig: {
     // Private config (server-side only, accessed via useRuntimeConfig())
     appName: '',

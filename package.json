@@ -16,6 +16,7 @@
     "postinstall": "nuxt prepare"
   },
   "dependencies": {
+    "@opencowstudio/base": "link:modules/base",
     "nuxt": "^4.4.6",
     "uuid": "^14.0.0",
     "vue": "^3.5.34",

@@ -1,5 +1,5 @@
 {
-  "model": "hy3-preview",
+  "model": "hy3",
   "permissions": {
     "defaultMode": "bypassPermissions",
     "subagentPermissionMode": "bypassPermissions"

@@ -11,6 +11,15 @@ import type {
 // Symbol keys used to store metadata on the class constructor
 // ---------------------------------------------------------------------------
 
+/** Convert a string (typically a field name) to snake_case. */
+function toSnakeCase(name: string): string {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
+    .replace(/[\s-]+/g, '_')
+    .toLowerCase()
+}
+
 const ENTITY_METADATA = Symbol('pg:entity')
 const KEY_METADATA = Symbol('pg:key')
 const COLUMN_METADATA = Symbol('pg:column')
@@ -97,7 +106,7 @@ export function PgKey(options: PgKeyOptions = {}): <C, V>(
 ) => void {
   return function (value: undefined, context: ClassFieldDecoratorContext): void {
     const propertyKey = context.name
-    const column = options.column !== undefined ? options.column : String(propertyKey)
+    const column = options.column !== undefined ? options.column : toSnakeCase(String(propertyKey))
     const generated = options.generated !== undefined ? options.generated : true
     const comment = options.comment !== undefined ? options.comment : ''
 
@@ -119,7 +128,7 @@ export function PgColumn(options: PgColumnOptions = {}): <C, V>(
 ) => void {
   return function (value: undefined, context: ClassFieldDecoratorContext): void {
     const propertyKey = context.name
-    const column = options.column !== undefined ? options.column : String(propertyKey)
+    const column = options.column !== undefined ? options.column : toSnakeCase(String(propertyKey))
     const defaultValue = options.defaultValue !== undefined ? options.defaultValue : ''
     const comment = options.comment !== undefined ? options.comment : ''
 

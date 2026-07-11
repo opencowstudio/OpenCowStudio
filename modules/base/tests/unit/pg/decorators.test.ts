@@ -45,6 +45,27 @@ class Product {
   price!: number
 }
 
+@PgEntity()
+class SnakeCase {
+  @PgKey()
+  userId!: string
+
+  @PgColumn()
+  firstName!: string
+
+  @PgColumn()
+  lastName!: string
+
+  @PgColumn()
+  userID!: number
+
+  @PgColumn()
+  httpStatusCode!: number
+
+  @PgColumn()
+  displayName!: string
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -81,7 +102,7 @@ describe('Pg decorators — definition & parsing', () => {
     })
     expect(meta!.columns).toContainEqual({
       propertyKey: 'createdAt',
-      column: 'createdAt',
+      column: 'created_at',
       defaultValue: '',
       comment: '',
     })
@@ -100,7 +121,7 @@ describe('Pg decorators — definition & parsing', () => {
 
     expect(meta!.keys[0]).toMatchObject({
       propertyKey: 'productId',
-      column: 'productId',
+      column: 'product_id',
       generated: true,
       comment: '',
     })
@@ -122,5 +143,47 @@ describe('Pg decorators — definition & parsing', () => {
   it('should return undefined for a non-entity class', () => {
     class Plain {}
     expect(getPgEntityMetadata(Plain)).toBeUndefined()
+  })
+
+  it('should derive snake_case column from field name when column option is omitted', () => {
+    new SnakeCase()
+    const meta = getPgEntityMetadata(SnakeCase)
+    expect(meta).toBeDefined()
+
+    expect(meta!.keys[0]).toMatchObject({
+      propertyKey: 'userId',
+      column: 'user_id',
+    })
+
+    expect(meta!.columns).toContainEqual({
+      propertyKey: 'firstName',
+      column: 'first_name',
+      defaultValue: '',
+      comment: '',
+    })
+    expect(meta!.columns).toContainEqual({
+      propertyKey: 'lastName',
+      column: 'last_name',
+      defaultValue: '',
+      comment: '',
+    })
+    expect(meta!.columns).toContainEqual({
+      propertyKey: 'userID',
+      column: 'user_id',
+      defaultValue: '',
+      comment: '',
+    })
+    expect(meta!.columns).toContainEqual({
+      propertyKey: 'httpStatusCode',
+      column: 'http_status_code',
+      defaultValue: '',
+      comment: '',
+    })
+    expect(meta!.columns).toContainEqual({
+      propertyKey: 'displayName',
+      column: 'display_name',
+      defaultValue: '',
+      comment: '',
+    })
   })
 })

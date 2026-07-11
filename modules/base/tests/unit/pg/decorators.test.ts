@@ -210,3 +210,99 @@ describe('Pg decorators — definition & parsing', () => {
     })
   })
 })
+
+describe('Pg decorators — name validation', () => {
+  const VALID_RE = /^[a-zA-Z0-9_]+$/
+
+  it('should throw when dbName contains invalid characters', () => {
+    expect(() => {
+      @PgEntity({ dbName: 'bad-db' })
+      class BadDb {}
+
+      new BadDb()
+    }).toThrow(/Invalid dbName/)
+  })
+
+  it('should throw when schema contains invalid characters', () => {
+    expect(() => {
+      @PgEntity({ schema: 'bad schema' })
+      class BadSchema {}
+
+      new BadSchema()
+    }).toThrow(/Invalid schema/)
+  })
+
+  it('should throw when table contains invalid characters', () => {
+    expect(() => {
+      @PgEntity({ table: 'bad-table!' })
+      class BadTable {}
+
+      new BadTable()
+    }).toThrow(/Invalid table/)
+  })
+
+  it('should accept valid dbName, schema and table without throwing', () => {
+    expect(() => {
+      @PgEntity({ dbName: 'my_db_1', schema: 'app_schema', table: 'my_table' })
+      class ValidEntity {}
+
+      new ValidEntity()
+    }).not.toThrow()
+  })
+
+  it('should throw when a PgColumn column name contains invalid characters', () => {
+    expect(() => {
+      class BadColumn {
+        @PgColumn({ column: 'bad-column' })
+        name!: string
+      }
+
+      new BadColumn()
+    }).toThrow(/Invalid column/)
+  })
+
+  it('should throw when a PgKey column name contains invalid characters', () => {
+    expect(() => {
+      class BadKey {
+        @PgKey({ column: 'bad key' })
+        id!: string
+      }
+
+      new BadKey()
+    }).toThrow(/Invalid column/)
+  })
+
+  it('should throw when an index column name contains invalid characters', () => {
+    expect(() => {
+      @PgEntity({ indexes: [{ columns: ['bad-column'], unique: true }] })
+      class BadIndex {}
+
+      new BadIndex()
+    }).toThrow(/Invalid index column/)
+  })
+
+  it('should throw when an index references an invalid column name per the identifier regex', () => {
+    expect(() => {
+      @PgEntity({ indexes: [{ columns: ['valid_col', 'not valid'] }] })
+      class BadIndexCol {}
+
+      new BadIndexCol()
+    }).toThrow(/Invalid index column/)
+  })
+
+  it('should accept a valid index column name without throwing', () => {
+    expect(() => {
+      @PgEntity({ indexes: [{ columns: ['email'], unique: true }] })
+      class ValidIndex {}
+
+      new ValidIndex()
+    }).not.toThrow()
+  })
+
+  it('should ensure the identifier regex itself only matches [a-zA-Z0-9_]+', () => {
+    expect(VALID_RE.test('abc_123')).toBe(true)
+    expect(VALID_RE.test('abc-123')).toBe(false)
+    expect(VALID_RE.test('abc 123')).toBe(false)
+    expect(VALID_RE.test('abc!')).toBe(false)
+  })
+})

@@ -20,6 +20,30 @@ function toSnakeCase(name: string): string {
     .toLowerCase()
 }
 
+// ---------------------------------------------------------------------------
+// Identifier validation — PostgreSQL names (db / schema / table / column /
+// index column) must match this pattern. Names are validated at resolution
+// time; an invalid name throws and logs detailed diagnostics.
+// ---------------------------------------------------------------------------
+
+/** Allowed pattern for PostgreSQL identifiers: alphanumeric and underscore. */
+const IDENTIFIER_RE = /^[a-zA-Z0-9_]+$/
+
+/**
+ * Validate that `value` is a legal PostgreSQL identifier.
+ *
+ * Throws an Error (with detailed context) and logs to stderr when invalid.
+ * Empty/undefined values are treated as "not provided" and skipped — callers
+ * are responsible for applying their own defaults before/after validation.
+ */
+function assertValidIdentifier(value: string, kind: string, context: string): void {
+  if (!IDENTIFIER_RE.test(value)) {
+    const message = `Invalid ${kind} "${value}": must match ${IDENTIFIER_RE} (alphanumeric and underscore only). Context: ${context}`
+    console.error(`[pg-decorators] ${message}`)
+    throw new Error(message)
+  }
+}
+
 const ENTITY_METADATA = Symbol('pg:entity')
 const KEY_METADATA = Symbol('pg:key')
 const COLUMN_METADATA = Symbol('pg:column')
@@ -56,10 +80,24 @@ function getColumnsMetadata(target: object): Map<string | symbol, PgColumnMetada
 function ensureEntityMetadata(target: object, opts: PgEntityOptions, className: string): PgEntityMetadata {
   const holder = target as EntityMetadataHolder
   if (!holder[ENTITY_METADATA]) {
+    const dbName = opts.dbName ?? ''
+    const schema = opts.schema?.trim() ? opts.schema : 'public'
+    const table = opts.table?.trim() ? opts.table : toSnakeCase(className)
+
+    // Validate resolved identifier names (empty dbName means "default connection").
+    if (dbName) assertValidIdentifier(dbName, 'dbName', `entity ${className}`)
+    assertValidIdentifier(schema, 'schema', `entity ${className}`)
+    assertValidIdentifier(table, 'table', `entity ${className}`)
+    for (const index of opts.indexes ?? []) {
+      for (const col of index.columns) {
+        assertValidIdentifier(col, 'index column', `entity ${className} index [${index.columns.join(', ')}]`)
+      }
+    }
+
     holder[ENTITY_METADATA] = {
-      dbName: opts.dbName ?? '',
-      schema: opts.schema?.trim() ? opts.schema : 'public',
-      table: opts.table?.trim() ? opts.table : toSnakeCase(className),
+      dbName,
+      schema,
+      table,
       comment: opts.comment ?? '',
       createTableAuto: opts.createTableAuto ?? true,
       addColumnAuto: opts.addColumnAuto ?? true,
@@ -112,6 +150,7 @@ export function PgKey(options: PgKeyOptions = {}): <C, V>(
 
     context.addInitializer(function (this: unknown): void {
       const klass = (this as Record<string | symbol, unknown>).constructor
+      assertValidIdentifier(column, 'column', `key ${String(propertyKey)} on ${klass.name || 'anonymous'}`)
       const map = ensureKeysMetadata(klass as object)
       map.set(propertyKey, { propertyKey, column, generated, comment })
     })
@@ -134,6 +173,7 @@ export function PgColumn(options: PgColumnOptions = {}): <C, V>(
 
     context.addInitializer(function (this: unknown): void {
       const klass = (this as Record<string | symbol, unknown>).constructor
+      assertValidIdentifier(column, 'column', `column ${String(propertyKey)} on ${klass.name || 'anonymous'}`)
       const map = ensureColumnsMetadata(klass as object)
       map.set(propertyKey, { propertyKey, column, defaultValue, comment })
     })

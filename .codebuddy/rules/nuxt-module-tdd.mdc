@@ -1,0 +1,63 @@
+---
+description: TDD (Test-Driven Development) workflow for Nuxt module projects under modules/
+globs:
+alwaysApply: true
+---
+
+# Nuxt Module TDD Workflow
+
+This rule defines the Test-Driven Development workflow for Nuxt module projects located under `modules/`. Each module (e.g. `modules/base`) is an independent, publishable Nuxt module package with its own `package.json`, `tsconfig.json`, `pnpm-workspace.yaml`, `src/`, and `tests/`.
+
+## Module Layout
+
+```
+modules/<name>/
+├── src/                  # Module source (decorators, utils, runtime, index.ts)
+├── tests/
+│   └── unit/             # Unit tests, mirroring the src/ tree
+├── package.json          # `test`: vitest run, `typecheck`: tsc --noEmit
+├── tsconfig.json
+└── pnpm-workspace.yaml
+```
+
+## Test Location & Naming
+
+- Tests live under `tests/unit/` and **mirror the `src/` directory structure**.
+- Suffix every test file with `.test.ts` (e.g. `src/pg/decorators.ts` → `tests/unit/pg/decorators.test.ts`).
+- Use Vitest's `describe` / `it` / `expect` API. Do **not** introduce another test runner.
+- Import the code under test via the module entry (`@opencowstudio/<name>`) or a relative path to `src/`.
+
+## TDD Cycle (Red → Green → Refactor)
+
+1. **Red** — Before writing any implementation, write a failing unit test that describes the expected behavior of the new feature (decorator, util, runtime composable, etc.).
+2. **Green** — Implement the *minimal* source under `src/` required to make the test pass. Do not over-engineer.
+3. **Refactor** — Improve structure, naming, and reuse while keeping the test suite green.
+4. **Verify** — Run the module's tests and type-check before considering the task done.
+
+Never commit implementation without the corresponding test (except for trivial type-only or boilerplate code).
+
+## Commands
+
+Run from within the module directory (`modules/<name>`):
+
+| Command | Purpose |
+|---------|---------|
+| `pnpm test` | Run the full unit suite once (`vitest run`) |
+| `pnpm test --watch` / `pnpm vitest` | Watch mode during development |
+| `pnpm typecheck` | Type-check with `tsc --noEmit` |
+| `pnpm build` | Build the module with `nuxi build` |
+
+To run a single test file: `pnpm vitest run tests/unit/pg/decorators.test.ts`.
+
+## Testing Levels
+
+- **Unit tests (recommended first):** Pure logic that needs no Nuxt runtime — decorators, metadata parsing, utilities. These are fast and form the bulk of the TDD loop.
+  - When testing class/method decorators, instantiate the class (e.g. `new User()`) to trigger decorator registration before asserting on collected metadata.
+- **Module / integration tests:** For features that require the Nuxt runtime (runtime plugins, composables, auto-imports, module `setup`). Use `@nuxt/test-utils` with `setup(...)` and assert against the rendered app or `useRuntimeConfig()`.
+
+## Conventions
+
+- Keep tests isolated and deterministic; avoid shared mutable global state between `it` blocks.
+- Avoid `console.log` debugging output in committed tests; if temporarily needed, keep it scoped and remove before finishing.
+- Follow the repo-wide English-only rule: test identifiers, assertions, and comments in English.
+- One logical feature per test file location; group related cases with `describe` blocks by function or entity.

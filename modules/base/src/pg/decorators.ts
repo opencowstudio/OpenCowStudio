@@ -150,6 +150,12 @@ export function PgKey(options: PgKeyOptions = {}): <C, V>(
 
     context.addInitializer(function (this: unknown): void {
       const klass = (this as Record<string | symbol, unknown>).constructor
+      const value = (this as Record<string | symbol, unknown>)[propertyKey]
+      if (value !== undefined && typeof value !== 'string') {
+        const message = `Invalid PgKey field "${String(propertyKey)}" on ${klass.name || 'anonymous'}: key value must be a string, but got type "${typeof value}" (value: ${JSON.stringify(value)}).`
+        console.error(`[pg-decorators] ${message}`)
+        throw new Error(message)
+      }
       assertValidIdentifier(column, 'column', `key ${String(propertyKey)} on ${klass.name || 'anonymous'}`)
       const map = ensureKeysMetadata(klass as object)
       map.set(propertyKey, { propertyKey, column, generated, comment })

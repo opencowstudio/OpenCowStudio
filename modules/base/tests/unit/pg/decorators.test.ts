@@ -306,3 +306,49 @@ describe('Pg decorators — name validation', () => {
     expect(VALID_RE.test('abc!')).toBe(false)
   })
 })
+
+describe('Pg decorators — PgKey field type validation', () => {
+  it('should throw when a PgKey field is initialised with a non-string value (number)', () => {
+    expect(() => {
+      class BadKeyNumber {
+        @PgKey()
+        id = 42
+      }
+
+      new BadKeyNumber()
+    }).toThrow(/Invalid PgKey/)
+  })
+
+  it('should throw when a PgKey field is initialised with a non-string value (object)', () => {
+    expect(() => {
+      class BadKeyObject {
+        @PgKey()
+        id = { a: 1 }
+      }
+
+      new BadKeyObject()
+    }).toThrow(/Invalid PgKey/)
+  })
+
+  it('should allow a PgKey field that is declared but not yet assigned (undefined)', () => {
+    expect(() => {
+      class KeyUndefined {
+        @PgKey()
+        id!: string
+      }
+
+      new KeyUndefined()
+    }).not.toThrow()
+  })
+
+  it('should accept a PgKey field holding a string value without throwing', () => {
+    expect(() => {
+      class GoodKeyType {
+        @PgKey()
+        id = 'abc'
+      }
+
+      new GoodKeyType()
+    }).not.toThrow()
+  })
+})

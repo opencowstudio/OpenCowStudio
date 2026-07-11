@@ -94,7 +94,7 @@ function ensureColumnsMetadata(target: object): Map<string | symbol, PgColumnMet
 export function PgKey(options: PgKeyOptions = {}): <C, V>(
   value: undefined,
   context: ClassFieldDecoratorContext<C, V>,
-) => void | ((initialValue: undefined) => V) {
+) => void {
   return function (value: undefined, context: ClassFieldDecoratorContext): void {
     const propertyKey = context.name
     const column = options.column !== undefined ? options.column : String(propertyKey)
@@ -116,7 +116,7 @@ export function PgKey(options: PgKeyOptions = {}): <C, V>(
 export function PgColumn(options: PgColumnOptions = {}): <C, V>(
   value: undefined,
   context: ClassFieldDecoratorContext<C, V>,
-) => void | ((initialValue: undefined) => V) {
+) => void {
   return function (value: undefined, context: ClassFieldDecoratorContext): void {
     const propertyKey = context.name
     const column = options.column !== undefined ? options.column : String(propertyKey)

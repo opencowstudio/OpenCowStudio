@@ -52,6 +52,7 @@ OpenCowStudio/
 │   ├── components/             # Reusable Vue components
 │   ├── composables/            # Vue composables (auto-imported by Nuxt)
 │   └── layouts/                # Page layout templates
+├── modules/                    # Nuxt module projects (independent, reusable Nuxt modules)
 ├── server/                     # Backend (Nitro server engine)
 │   ├── api/                    # API route handlers (auto-registered)
 │   ├── middleware/             # Server middleware
@@ -76,6 +77,7 @@ OpenCowStudio/
 ## Conventions
 
 - Follow Nuxt 4 directory conventions (`app/` directory for frontend code)
+- `modules/` holds Nuxt module projects — independent, reusable Nuxt modules that can be registered via `nuxt.config.ts`
 - Server API routes are defined in `server/api/` and auto-registered by Nitro
 - Vue composables in `app/composables/` are auto-imported by Nuxt
 - i18n locale files in `i18n/locales/` may contain non-English text per the target language

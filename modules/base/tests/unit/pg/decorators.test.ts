@@ -115,8 +115,8 @@ describe('Pg decorators — definition & parsing', () => {
     // eslint-disable-next-line no-console
     console.log('Parsed Product entity metadata:', JSON.stringify(meta, null, 2))
 
-    // table defaults to '' (derived from class name by caller, not decorator)
-    expect(meta!.table).toBe('')
+    // table defaults to snake_case of the class name (derived by the decorator)
+    expect(meta!.table).toBe('product')
     expect(meta!.createTableAuto).toBe(true)
 
     expect(meta!.keys[0]).toMatchObject({
@@ -138,6 +138,29 @@ describe('Pg decorators — definition & parsing', () => {
       defaultValue: '0',
       comment: '',
     })
+  })
+
+  it('should default schema to "public" and table to snake_case class name when omitted', () => {
+    new Product()
+    const meta = getPgEntityMetadata(Product)
+    expect(meta).toBeDefined()
+
+    // schema defaults to 'public' when not provided
+    expect(meta!.schema).toBe('public')
+    // table defaults to snake_case of the class name when not provided
+    expect(meta!.table).toBe('product')
+
+    // snake_case of a multi-word class name
+    new SnakeCase()
+    const snakeMeta = getPgEntityMetadata(SnakeCase)
+    expect(snakeMeta!.table).toBe('snake_case')
+  })
+
+  it('should keep provided schema and table when explicitly set', () => {
+    new User()
+    const meta = getPgEntityMetadata(User)
+    expect(meta!.schema).toBe('public')
+    expect(meta!.table).toBe('users')
   })
 
   it('should return undefined for a non-entity class', () => {

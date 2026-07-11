@@ -53,13 +53,13 @@ function getColumnsMetadata(target: object): Map<string | symbol, PgColumnMetada
 }
 
 /** Initialise (or return existing) entity metadata on `target`. */
-function ensureEntityMetadata(target: object, opts: PgEntityOptions): PgEntityMetadata {
+function ensureEntityMetadata(target: object, opts: PgEntityOptions, className: string): PgEntityMetadata {
   const holder = target as EntityMetadataHolder
   if (!holder[ENTITY_METADATA]) {
     holder[ENTITY_METADATA] = {
       dbName: opts.dbName ?? '',
-      schema: opts.schema ?? '',
-      table: opts.table ?? '',
+      schema: opts.schema?.trim() ? opts.schema : 'public',
+      table: opts.table?.trim() ? opts.table : toSnakeCase(className),
       comment: opts.comment ?? '',
       createTableAuto: opts.createTableAuto ?? true,
       addColumnAuto: opts.addColumnAuto ?? true,
@@ -153,7 +153,7 @@ export function PgEntity(options: PgEntityOptions = {}): <C extends abstract new
 ) => C | void {
   return function (value: Function, context: ClassDecoratorContext): void {
     const target = value as object
-    ensureEntityMetadata(target, options)
+    ensureEntityMetadata(target, options, value.name)
     // pre-initialise the key / column maps so field decorators can use them
     ensureKeysMetadata(target)
     ensureColumnsMetadata(target)

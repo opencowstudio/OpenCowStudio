@@ -40,9 +40,9 @@ export interface PgEntityOptions {
   createIndexAuto?: boolean
   /** database name, default '' (uses default connection db) */
   dbName?: string
-  /** schema name, default '' (uses default schema, usually 'public') */
+  /** schema name, default 'public' */
   schema?: string
-  /** table name in database, default '' (derived from class name) */
+  /** table name in database, default snake_case of the class name */
   table?: string
   /** table comment, default '' */
   comment?: string

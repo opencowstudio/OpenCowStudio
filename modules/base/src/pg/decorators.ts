@@ -83,6 +83,17 @@ function resolveColumnType(value: PgColumnType | undefined, context: string): Pg
 const ENTITY_METADATA = Symbol('pg:entity')
 const KEY_METADATA = Symbol('pg:key')
 const COLUMN_METADATA = Symbol('pg:column')
+/** Marks an entity whose field initializers have been run (constructed once). */
+const FINALIZED = Symbol('pg:entity:finalized')
+/** Cache for the fully-assembled entity metadata on a constructor. */
+const RESOLVED_METADATA = Symbol('pg:entity:resolved')
+
+/**
+ * Registry of every class decorated with @PgEntity, keyed by constructor.
+ * Populated at class-definition time so entities can be discovered and
+ * finalised without manual construction by the consumer.
+ */
+const ENTITY_REGISTRY = new Map<Function, PgEntityOptions>()
 
 // ---------------------------------------------------------------------------
 // Typed accessor helpers — attach metadata to a plain symbol key on `object`
@@ -239,6 +250,8 @@ export function PgEntity(options: PgEntityOptions = {}): <C extends abstract new
     // pre-initialise the key / column maps so field decorators can use them
     ensureKeysMetadata(target)
     ensureColumnsMetadata(target)
+    // self-register so the class can be discovered by the scanner
+    ENTITY_REGISTRY.set(value, options)
   }
 }
 
@@ -246,13 +259,78 @@ export function PgEntity(options: PgEntityOptions = {}): <C extends abstract new
 // Public helper: retrieve fully-assembled entity metadata at runtime
 // ---------------------------------------------------------------------------
 
+/**
+ * Ensure the key / column metadata of an entity is populated.
+ *
+ * Field decorators (@PgKey / @PgColumn) register their metadata via
+ * `addInitializer`, which only runs when an instance is constructed. To let
+ * consumers query metadata without manually calling `new`, this constructs
+ * the entity once (cached) to fire those initializers, then assembles and
+ * caches the fully-resolved metadata.
+ */
+function finalizePgEntity(ctor: object): void {
+  const holder = ctor as Record<symbol, unknown>
+  if (holder[FINALIZED]) return
+
+  try {
+    new (ctor as new () => unknown)()
+  }
+  catch (err) {
+    const message = `Failed to finalize entity "${(ctor as { name?: string }).name}": ${err instanceof Error ? err.message : String(err)}. Entity classes must have a no-argument constructor so their field metadata can be collected.`
+    console.error(`[pg-decorators] ${message}`)
+    throw new Error(message)
+  }
+
+  holder[FINALIZED] = true
+}
+
 export function getPgEntityMetadata<T extends object>(ctor: T): PgEntityMetadata | undefined {
   const entityMeta = getEntityMetadata(ctor)
   if (!entityMeta) return undefined
 
-  return {
+  const holder = ctor as Record<symbol, unknown>
+  if (holder[RESOLVED_METADATA]) {
+    return holder[RESOLVED_METADATA] as PgEntityMetadata
+  }
+
+  finalizePgEntity(ctor)
+
+  const resolved: PgEntityMetadata = {
     ...entityMeta,
     keys: [...(getKeysMetadata(ctor)?.values() ?? [])],
     columns: [...(getColumnsMetadata(ctor)?.values() ?? [])],
   }
+  holder[RESOLVED_METADATA] = resolved
+  return resolved
+}
+
+/**
+ * Finalise and return metadata for every entity discovered in the given
+ * imported modules (the shape produced by `import.meta.glob`). Modules that
+ * were already registered are also included. Returns fully-assembled
+ * `PgEntityMetadata` for all known entities.
+ */
+export function scanPgEntities(modules: Record<string, unknown>[] = []): PgEntityMetadata[] {
+  for (const mod of modules) {
+    for (const exported of Object.values(mod)) {
+      if (typeof exported === 'function' && ENTITY_REGISTRY.has(exported as Function)) {
+        finalizePgEntity(exported as Function)
+      }
+    }
+  }
+  return getAllPgEntityMetadata()
+}
+
+/**
+ * Return metadata for every registered entity, finalising each as needed.
+ * This is the primary "query all entities" entry point and does not require
+ * the consumer to construct any entity instance.
+ */
+export function getAllPgEntityMetadata(): PgEntityMetadata[] {
+  const metas: PgEntityMetadata[] = []
+  for (const ctor of ENTITY_REGISTRY.keys()) {
+    const meta = getPgEntityMetadata(ctor)
+    if (meta) metas.push(meta)
+  }
+  return metas
 }

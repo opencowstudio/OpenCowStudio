@@ -1,4 +1,5 @@
-import { defineNuxtModule, createResolver } from '@nuxt/kit'
+import { defineNuxtModule } from '@nuxt/kit'
+import { scanPgEntities } from './pg'
 export { generateGuid, generateId } from './utils/id'
 
 export interface ModuleOptions {
@@ -25,14 +26,9 @@ export default defineNuxtModule<ModuleOptions>({
       return
     }
 
-    const { resolve } = createResolver(import.meta.url)
-
-    // Add runtime plugins, components, composables, etc. here
-    // Example: add a runtime plugin
-    // nuxt.hook('nitro:config', (nitroConfig) => {
-    //   nitroConfig.prerender = nitroConfig.prerender || {}
-    //   nitroConfig.prerender.routes = nitroConfig.prerender.routes || []
-    //   nitroConfig.prerender.routes.push('/')
-    // })
+    // Scan all PostgreSQL entity classes so their @PgEntity metadata is
+    // discovered and registered without manual construction.
+    const entityFiles = import.meta.glob('/**/entities/*.ts', { eager: true })
+    scanPgEntities(Object.values(entityFiles) as Record<string, unknown>[])
   },
 })

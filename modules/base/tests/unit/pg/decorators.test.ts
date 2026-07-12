@@ -4,67 +4,24 @@ import {
   PgKey,
   PgColumn,
   getPgEntityMetadata,
+  getAllPgEntityMetadata,
+  scanPgEntities,
 } from '../../../src/pg'
+import * as userModule from './entities/user'
+import * as productModule from './entities/product'
+import * as snakeCaseModule from './entities/snake-case'
+import * as memberModule from './entities/member'
+import * as articleModule from './entities/article'
 
-// ---------------------------------------------------------------------------
-// Entities under test
-// ---------------------------------------------------------------------------
+const { User } = userModule
+const { Product } = productModule
+const { SnakeCase } = snakeCaseModule
+const { Member } = memberModule
+const { Article } = articleModule
 
-@PgEntity({
-  table: 'users',
-  schema: 'public',
-  comment: 'Application users',
-  createTableAuto: true,
-  addColumnAuto: true,
-  createIndexAuto: true,
-  indexes: [{ columns: ['email'], unique: true }],
-})
-class User {
-  @PgKey({ generated: false })
-  id!: string
-
-  @PgColumn({ comment: 'Login email', columnType: 'TEXT' })
-  email!: string
-
-  @PgColumn({ comment: 'Display name', columnType: 'TEXT' })
-  displayName!: string
-
-  @PgColumn({ columnType: 'DATE' })
-  createdAt!: Date
-}
-
-@PgEntity()
-class Product {
-  @PgKey({ generated: true })
-  productId!: number
-
-  @PgColumn({ columnType: 'TEXT' })
-  name!: string
-
-  @PgColumn({ columnType: 'DOUBLE' })
-  price!: number
-}
-
-@PgEntity()
-class SnakeCase {
-  @PgKey()
-  userId!: string
-
-  @PgColumn({ columnType: 'TEXT' })
-  firstName!: string
-
-  @PgColumn({ columnType: 'TEXT' })
-  lastName!: string
-
-  @PgColumn({ columnType: 'BIGINT' })
-  userID!: number
-
-  @PgColumn({ columnType: 'BIGINT' })
-  httpStatusCode!: number
-
-  @PgColumn({ columnType: 'TEXT' })
-  displayName!: string
-}
+// Trigger entity scanning / registration before running assertions, so the
+// metadata is available without manually constructing each entity.
+scanPgEntities([userModule, productModule, snakeCaseModule, memberModule, articleModule])
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -72,8 +29,6 @@ class SnakeCase {
 
 describe('Pg decorators — definition & parsing', () => {
   it('should parse User entity metadata', () => {
-    // Field decorators register via addInitializer, which runs on construction.
-    new User()
     const meta = getPgEntityMetadata(User)
     expect(meta).toBeDefined()
     // eslint-disable-next-line no-console
@@ -109,7 +64,6 @@ describe('Pg decorators — definition & parsing', () => {
   })
 
   it('should derive defaults when options are omitted (Product entity)', () => {
-    new Product()
     const meta = getPgEntityMetadata(Product)
     expect(meta).toBeDefined()
     // eslint-disable-next-line no-console
@@ -141,7 +95,6 @@ describe('Pg decorators — definition & parsing', () => {
   })
 
   it('should default schema to "public" and table to snake_case class name when omitted', () => {
-    new Product()
     const meta = getPgEntityMetadata(Product)
     expect(meta).toBeDefined()
 
@@ -151,25 +104,17 @@ describe('Pg decorators — definition & parsing', () => {
     expect(meta!.table).toBe('product')
 
     // snake_case of a multi-word class name
-    new SnakeCase()
     const snakeMeta = getPgEntityMetadata(SnakeCase)
     expect(snakeMeta!.table).toBe('snake_case')
   })
 
   it('should keep provided schema and table when explicitly set', () => {
-    new User()
     const meta = getPgEntityMetadata(User)
     expect(meta!.schema).toBe('public')
     expect(meta!.table).toBe('users')
   })
 
-  it('should return undefined for a non-entity class', () => {
-    class Plain {}
-    expect(getPgEntityMetadata(Plain)).toBeUndefined()
-  })
-
   it('should derive snake_case column from field name when column option is omitted', () => {
-    new SnakeCase()
     const meta = getPgEntityMetadata(SnakeCase)
     expect(meta).toBeDefined()
 
@@ -400,5 +345,52 @@ describe('Pg decorators — PgColumn columnType requirement', () => {
 
       new BadType()
     }).toThrow(/columnType/)
+  })
+})
+
+describe('Pg entity scanning & lookup', () => {
+  it('should build metadata for an entity without manually constructing it', () => {
+    const meta = getPgEntityMetadata(Member)
+    expect(meta).toBeDefined()
+    expect(meta!.table).toBe('members')
+    expect(meta!.schema).toBe('public')
+    expect(meta!.keys).toHaveLength(1)
+    expect(meta!.keys[0]).toMatchObject({ propertyKey: 'id', column: 'id' })
+    expect(meta!.columns).toContainEqual({
+      propertyKey: 'name',
+      column: 'name',
+      comment: '',
+      columnType: 'TEXT',
+    })
+  })
+
+  it('should derive table from class name when not provided', () => {
+    const meta = getPgEntityMetadata(Article)
+    expect(meta!.table).toBe('article')
+  })
+
+  it('should return metadata for all scanned modules via scanPgEntities', () => {
+    const metas = scanPgEntities([memberModule, articleModule])
+    const tables = metas.map(m => m.table).sort()
+    expect(tables).toContain('members')
+    expect(tables).toContain('article')
+  })
+
+  it('should return metadata for all registered entities via getAllPgEntityMetadata', () => {
+    const metas = getAllPgEntityMetadata()
+    const tables = metas.map(m => m.table).sort()
+    expect(tables).toContain('members')
+    expect(tables).toContain('article')
+  })
+
+  it('should return undefined for a non-entity class', () => {
+    class Plain {}
+    expect(getPgEntityMetadata(Plain)).toBeUndefined()
+  })
+
+  it('should make getPgEntityMetadata idempotent (cached, no repeated construction)', () => {
+    const first = getPgEntityMetadata(Member)
+    const second = getPgEntityMetadata(Member)
+    expect(second).toBe(first)
   })
 })

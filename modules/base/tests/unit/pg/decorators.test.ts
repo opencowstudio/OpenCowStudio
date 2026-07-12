@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { useLogger } from '@nuxt/kit'
 import {
   PgEntity,
   PgKey,
@@ -7,6 +8,8 @@ import {
   getAllPgEntityMetadata,
   scanPgEntities,
 } from '../../../src/pg'
+
+const logger = useLogger('test')
 
 // Auto-import every entity file via Vite's glob (no per-file imports). Importing
 // the modules executes the @PgEntity decorators so classes self-register.
@@ -38,7 +41,7 @@ describe('Pg decorators — definition & parsing', () => {
     const meta = getPgEntityMetadata(User)
     expect(meta).toBeDefined()
     // eslint-disable-next-line no-console
-    console.log('Parsed User entity metadata:', JSON.stringify(meta, null, 2))
+    logger.info('Parsed User entity metadata:', JSON.stringify(meta, null, 2))
 
     expect(meta!.table).toBe('users')
     expect(meta!.schema).toBe('public')
@@ -73,7 +76,7 @@ describe('Pg decorators — definition & parsing', () => {
     const meta = getPgEntityMetadata(Product)
     expect(meta).toBeDefined()
     // eslint-disable-next-line no-console
-    console.log('Parsed Product entity metadata:', JSON.stringify(meta, null, 2))
+    logger.info('Parsed Product entity metadata:', JSON.stringify(meta, null, 2))
 
     // table defaults to snake_case of the class name (derived by the decorator)
     expect(meta!.table).toBe('product')

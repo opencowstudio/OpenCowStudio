@@ -1,3 +1,5 @@
+import { useLogger } from '@nuxt/kit'
+
 import type {
   PgColumnMetadata,
   PgColumnOptions,
@@ -7,6 +9,8 @@ import type {
   PgKeyMetadata,
   PgKeyOptions,
 } from './types.ts'
+
+const logger = useLogger('pg')
 
 // ---------------------------------------------------------------------------
 // Symbol keys used to store metadata on the class constructor
@@ -40,7 +44,7 @@ const IDENTIFIER_RE = /^[a-zA-Z0-9_]+$/
 function assertValidIdentifier(value: string, kind: string, context: string): void {
   if (!IDENTIFIER_RE.test(value)) {
     const message = `Invalid ${kind} "${value}": must match ${IDENTIFIER_RE} (alphanumeric and underscore only). Context: ${context}`
-    console.error(`[pg-decorators] ${message}`)
+    logger.error(message)
     throw new Error(message)
   }
 }
@@ -69,12 +73,12 @@ const COLUMN_TYPES: ReadonlySet<string> = new Set<PgColumnType>([
 function resolveColumnType(value: PgColumnType | undefined, context: string): PgColumnType {
   if (value === undefined) {
     const message = `Missing required columnType for ${context}. Expected one of: ${[...COLUMN_TYPES].join(', ')}.`
-    console.error(`[pg-decorators] ${message}`)
+    logger.error(message)
     throw new Error(message)
   }
   if (!COLUMN_TYPES.has(value)) {
     const message = `Invalid columnType "${value}" for ${context}. Expected one of: ${[...COLUMN_TYPES].join(', ')}.`
-    console.error(`[pg-decorators] ${message}`)
+    logger.error(message)
     throw new Error(message)
   }
   return value
@@ -200,7 +204,7 @@ export function PgKey(options: PgKeyOptions = {}): <C, V>(
       const value = (this as Record<string | symbol, unknown>)[propertyKey]
       if (value !== undefined && typeof value !== 'string') {
         const message = `Invalid PgKey field "${String(propertyKey)}" on ${klass.name || 'anonymous'}: key value must be a string, but got type "${typeof value}" (value: ${JSON.stringify(value)}).`
-        console.error(`[pg-decorators] ${message}`)
+        logger.error(message)
         throw new Error(message)
       }
       assertValidIdentifier(column, 'column', `key ${String(propertyKey)} on ${klass.name || 'anonymous'}`)
@@ -277,7 +281,7 @@ function finalizePgEntity(ctor: object): void {
   }
   catch (err) {
     const message = `Failed to finalize entity "${(ctor as { name?: string }).name}": ${err instanceof Error ? err.message : String(err)}. Entity classes must have a no-argument constructor so their field metadata can be collected.`
-    console.error(`[pg-decorators] ${message}`)
+    logger.error(message)
     throw new Error(message)
   }
 
@@ -311,13 +315,17 @@ export function getPgEntityMetadata<T extends object>(ctor: T): PgEntityMetadata
  * `PgEntityMetadata` for all known entities.
  */
 export function scanPgEntities(modules: Record<string, unknown>[] = []): PgEntityMetadata[] {
+  logger.info('Scanning modules for @PgEntity decorators...')
+  let found = 0
   for (const mod of modules) {
     for (const exported of Object.values(mod)) {
       if (typeof exported === 'function' && ENTITY_REGISTRY.has(exported as Function)) {
         finalizePgEntity(exported as Function)
+        found++
       }
     }
   }
+  logger.info(`Found ${found} @PgEntity decorator(s) across ${modules.length} module(s)`)
   return getAllPgEntityMetadata()
 }
 

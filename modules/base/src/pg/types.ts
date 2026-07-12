@@ -20,7 +20,19 @@ export interface PgColumnOptions {
   defaultValue?: string
   /** column comment, default '' */
   comment?: string
+  /** logical SQL column type; must be declared on every column field */
+  columnType?: PgColumnType
 }
+
+/** Logical SQL column types. */
+export type PgColumnType =
+  | 'BIGINT'
+  | 'DOUBLE'
+  | 'BOOLEAN'
+  | 'JSON_OBJECT'
+  | 'JSON_ARRAY'
+  | 'TEXT'
+  | 'DATE'
 
 /** Options for @PgIndex decorator (used inside @PgEntity indexes array) */
 export interface PgIndexOptions {
@@ -78,4 +90,5 @@ export interface PgColumnMetadata {
   column: string
   defaultValue: string
   comment: string
+  columnType: PgColumnType
 }

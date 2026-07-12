@@ -23,13 +23,13 @@ class User {
   @PgKey({ generated: false })
   id!: string
 
-  @PgColumn({ comment: 'Login email' })
+  @PgColumn({ comment: 'Login email', columnType: 'TEXT' })
   email!: string
 
-  @PgColumn({ comment: 'Display name' })
+  @PgColumn({ comment: 'Display name', columnType: 'TEXT' })
   displayName!: string
 
-  @PgColumn()
+  @PgColumn({ columnType: 'DATE' })
   createdAt!: Date
 }
 
@@ -38,10 +38,10 @@ class Product {
   @PgKey({ generated: true })
   productId!: number
 
-  @PgColumn()
+  @PgColumn({ columnType: 'TEXT' })
   name!: string
 
-  @PgColumn({ defaultValue: '0' })
+  @PgColumn({ defaultValue: '0', columnType: 'DOUBLE' })
   price!: number
 }
 
@@ -50,19 +50,19 @@ class SnakeCase {
   @PgKey()
   userId!: string
 
-  @PgColumn()
+  @PgColumn({ columnType: 'TEXT' })
   firstName!: string
 
-  @PgColumn()
+  @PgColumn({ columnType: 'TEXT' })
   lastName!: string
 
-  @PgColumn()
+  @PgColumn({ columnType: 'BIGINT' })
   userID!: number
 
-  @PgColumn()
+  @PgColumn({ columnType: 'BIGINT' })
   httpStatusCode!: number
 
-  @PgColumn()
+  @PgColumn({ columnType: 'TEXT' })
   displayName!: string
 }
 
@@ -99,12 +99,14 @@ describe('Pg decorators — definition & parsing', () => {
       column: 'email',
       defaultValue: '',
       comment: 'Login email',
+      columnType: 'TEXT',
     })
     expect(meta!.columns).toContainEqual({
       propertyKey: 'createdAt',
       column: 'created_at',
       defaultValue: '',
       comment: '',
+      columnType: 'DATE',
     })
   })
 
@@ -131,12 +133,14 @@ describe('Pg decorators — definition & parsing', () => {
       column: 'name',
       defaultValue: '',
       comment: '',
+      columnType: 'TEXT',
     })
     expect(meta!.columns).toContainEqual({
       propertyKey: 'price',
       column: 'price',
       defaultValue: '0',
       comment: '',
+      columnType: 'DOUBLE',
     })
   })
 
@@ -183,30 +187,35 @@ describe('Pg decorators — definition & parsing', () => {
       column: 'first_name',
       defaultValue: '',
       comment: '',
+      columnType: 'TEXT',
     })
     expect(meta!.columns).toContainEqual({
       propertyKey: 'lastName',
       column: 'last_name',
       defaultValue: '',
       comment: '',
+      columnType: 'TEXT',
     })
     expect(meta!.columns).toContainEqual({
       propertyKey: 'userID',
       column: 'user_id',
       defaultValue: '',
       comment: '',
+      columnType: 'BIGINT',
     })
     expect(meta!.columns).toContainEqual({
       propertyKey: 'httpStatusCode',
       column: 'http_status_code',
       defaultValue: '',
       comment: '',
+      columnType: 'BIGINT',
     })
     expect(meta!.columns).toContainEqual({
       propertyKey: 'displayName',
       column: 'display_name',
       defaultValue: '',
       comment: '',
+      columnType: 'TEXT',
     })
   })
 })
@@ -253,7 +262,7 @@ describe('Pg decorators — name validation', () => {
   it('should throw when a PgColumn column name contains invalid characters', () => {
     expect(() => {
       class BadColumn {
-        @PgColumn({ column: 'bad-column' })
+        @PgColumn({ column: 'bad-column', columnType: 'TEXT' })
         name!: string
       }
 
@@ -350,5 +359,57 @@ describe('Pg decorators — PgKey field type validation', () => {
 
       new GoodKeyType()
     }).not.toThrow()
+  })
+})
+
+describe('Pg decorators — PgColumn columnType requirement', () => {
+  it('should store the declared columnType in metadata', () => {
+    @PgEntity()
+    class Typed {
+      @PgColumn({ columnType: 'JSON_OBJECT' })
+      data!: { a: number }
+
+      @PgColumn({ columnType: 'JSON_ARRAY' })
+      tags!: Array<string>
+    }
+
+    new Typed()
+    const meta = getPgEntityMetadata(Typed)
+    expect(meta!.columns).toContainEqual({
+      propertyKey: 'data',
+      column: 'data',
+      defaultValue: '',
+      comment: '',
+      columnType: 'JSON_OBJECT',
+    })
+    expect(meta!.columns).toContainEqual({
+      propertyKey: 'tags',
+      column: 'tags',
+      defaultValue: '',
+      comment: '',
+      columnType: 'JSON_ARRAY',
+    })
+  })
+
+  it('should throw when columnType is not declared', () => {
+    expect(() => {
+      class MissingType {
+        @PgColumn()
+        name!: string
+      }
+
+      new MissingType()
+    }).toThrow(/columnType/)
+  })
+
+  it('should throw when columnType is an invalid value', () => {
+    expect(() => {
+      class BadType {
+        @PgColumn({ columnType: 'INVALID' as never })
+        name!: string
+      }
+
+      new BadType()
+    }).toThrow(/columnType/)
   })
 })

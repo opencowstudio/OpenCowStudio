@@ -1,6 +1,7 @@
 import type {
   PgColumnMetadata,
   PgColumnOptions,
+  PgColumnType,
   PgEntityMetadata,
   PgEntityOptions,
   PgKeyMetadata,
@@ -42,6 +43,41 @@ function assertValidIdentifier(value: string, kind: string, context: string): vo
     console.error(`[pg-decorators] ${message}`)
     throw new Error(message)
   }
+}
+
+// ---------------------------------------------------------------------------
+// Column type validation
+// ---------------------------------------------------------------------------
+
+/** Allowed logical SQL column types. */
+const COLUMN_TYPES: ReadonlySet<string> = new Set<PgColumnType>([
+  'BIGINT',
+  'DOUBLE',
+  'BOOLEAN',
+  'JSON_OBJECT',
+  'JSON_ARRAY',
+  'TEXT',
+  'DATE',
+])
+
+/**
+ * Validate and normalise a declared column type.
+ *
+ * Throws an Error (with detailed context) and logs to stderr when the value
+ * is missing or not one of the allowed column types.
+ */
+function resolveColumnType(value: PgColumnType | undefined, context: string): PgColumnType {
+  if (value === undefined) {
+    const message = `Missing required columnType for ${context}. Expected one of: ${[...COLUMN_TYPES].join(', ')}.`
+    console.error(`[pg-decorators] ${message}`)
+    throw new Error(message)
+  }
+  if (!COLUMN_TYPES.has(value)) {
+    const message = `Invalid columnType "${value}" for ${context}. Expected one of: ${[...COLUMN_TYPES].join(', ')}.`
+    console.error(`[pg-decorators] ${message}`)
+    throw new Error(message)
+  }
+  return value
 }
 
 const ENTITY_METADATA = Symbol('pg:entity')
@@ -176,12 +212,13 @@ export function PgColumn(options: PgColumnOptions = {}): <C, V>(
     const column = options.column !== undefined ? options.column : toSnakeCase(String(propertyKey))
     const defaultValue = options.defaultValue !== undefined ? options.defaultValue : ''
     const comment = options.comment !== undefined ? options.comment : ''
+    const columnType = resolveColumnType(options.columnType, `column ${String(propertyKey)}`)
 
     context.addInitializer(function (this: unknown): void {
       const klass = (this as Record<string | symbol, unknown>).constructor
       assertValidIdentifier(column, 'column', `column ${String(propertyKey)} on ${klass.name || 'anonymous'}`)
       const map = ensureColumnsMetadata(klass as object)
-      map.set(propertyKey, { propertyKey, column, defaultValue, comment })
+      map.set(propertyKey, { propertyKey, column, defaultValue, comment, columnType })
     })
   }
 }

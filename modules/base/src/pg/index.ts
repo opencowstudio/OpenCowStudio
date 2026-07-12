@@ -7,6 +7,7 @@ export type {
   PgEntityOptions,
   PgKeyOptions,
   PgColumnOptions,
+  PgColumnType,
   PgIndexOptions,
   PgEntityMetadata,
   PgKeyMetadata,

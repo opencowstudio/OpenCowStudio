@@ -23,11 +23,11 @@ const entities = Object.fromEntries(
   ),
 ) as Record<string, object>
 
-const User = entities.User
-const Product = entities.Product
-const SnakeCase = entities.SnakeCase
-const Member = entities.Member
-const Article = entities.Article
+const User = entities.User!
+const Product = entities.Product!
+const SnakeCase = entities.SnakeCase!
+const Member = entities.Member!
+const Article = entities.Article!
 
 // ---------------------------------------------------------------------------
 // Tests

@@ -210,7 +210,6 @@ export function PgColumn(options: PgColumnOptions = {}): <C, V>(
   return function (value: undefined, context: ClassFieldDecoratorContext): void {
     const propertyKey = context.name
     const column = options.column !== undefined ? options.column : toSnakeCase(String(propertyKey))
-    const defaultValue = options.defaultValue !== undefined ? options.defaultValue : ''
     const comment = options.comment !== undefined ? options.comment : ''
     const columnType = resolveColumnType(options.columnType, `column ${String(propertyKey)}`)
 
@@ -218,7 +217,7 @@ export function PgColumn(options: PgColumnOptions = {}): <C, V>(
       const klass = (this as Record<string | symbol, unknown>).constructor
       assertValidIdentifier(column, 'column', `column ${String(propertyKey)} on ${klass.name || 'anonymous'}`)
       const map = ensureColumnsMetadata(klass as object)
-      map.set(propertyKey, { propertyKey, column, defaultValue, comment, columnType })
+      map.set(propertyKey, { propertyKey, column, comment, columnType })
     })
   }
 }

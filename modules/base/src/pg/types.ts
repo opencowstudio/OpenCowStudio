@@ -16,8 +16,6 @@ export interface PgKeyOptions {
 export interface PgColumnOptions {
   /** column name in database, default '' (derived from property name) */
   column?: string
-  /** default value expression for the column, default '' */
-  defaultValue?: string
   /** column comment, default '' */
   comment?: string
   /** logical SQL column type; must be declared on every column field */
@@ -88,7 +86,6 @@ export interface PgKeyMetadata {
 export interface PgColumnMetadata {
   propertyKey: string | symbol
   column: string
-  defaultValue: string
   comment: string
   columnType: PgColumnType
 }

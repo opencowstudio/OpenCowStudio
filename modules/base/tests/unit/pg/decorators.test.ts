@@ -41,7 +41,7 @@ class Product {
   @PgColumn({ columnType: 'TEXT' })
   name!: string
 
-  @PgColumn({ defaultValue: '0', columnType: 'DOUBLE' })
+  @PgColumn({ columnType: 'DOUBLE' })
   price!: number
 }
 
@@ -97,14 +97,12 @@ describe('Pg decorators — definition & parsing', () => {
     expect(meta!.columns).toContainEqual({
       propertyKey: 'email',
       column: 'email',
-      defaultValue: '',
       comment: 'Login email',
       columnType: 'TEXT',
     })
     expect(meta!.columns).toContainEqual({
       propertyKey: 'createdAt',
       column: 'created_at',
-      defaultValue: '',
       comment: '',
       columnType: 'DATE',
     })
@@ -131,14 +129,12 @@ describe('Pg decorators — definition & parsing', () => {
     expect(meta!.columns).toContainEqual({
       propertyKey: 'name',
       column: 'name',
-      defaultValue: '',
       comment: '',
       columnType: 'TEXT',
     })
     expect(meta!.columns).toContainEqual({
       propertyKey: 'price',
       column: 'price',
-      defaultValue: '0',
       comment: '',
       columnType: 'DOUBLE',
     })
@@ -185,35 +181,30 @@ describe('Pg decorators — definition & parsing', () => {
     expect(meta!.columns).toContainEqual({
       propertyKey: 'firstName',
       column: 'first_name',
-      defaultValue: '',
       comment: '',
       columnType: 'TEXT',
     })
     expect(meta!.columns).toContainEqual({
       propertyKey: 'lastName',
       column: 'last_name',
-      defaultValue: '',
       comment: '',
       columnType: 'TEXT',
     })
     expect(meta!.columns).toContainEqual({
       propertyKey: 'userID',
       column: 'user_id',
-      defaultValue: '',
       comment: '',
       columnType: 'BIGINT',
     })
     expect(meta!.columns).toContainEqual({
       propertyKey: 'httpStatusCode',
       column: 'http_status_code',
-      defaultValue: '',
       comment: '',
       columnType: 'BIGINT',
     })
     expect(meta!.columns).toContainEqual({
       propertyKey: 'displayName',
       column: 'display_name',
-      defaultValue: '',
       comment: '',
       columnType: 'TEXT',
     })
@@ -378,14 +369,12 @@ describe('Pg decorators — PgColumn columnType requirement', () => {
     expect(meta!.columns).toContainEqual({
       propertyKey: 'data',
       column: 'data',
-      defaultValue: '',
       comment: '',
       columnType: 'JSON_OBJECT',
     })
     expect(meta!.columns).toContainEqual({
       propertyKey: 'tags',
       column: 'tags',
-      defaultValue: '',
       comment: '',
       columnType: 'JSON_ARRAY',
     })

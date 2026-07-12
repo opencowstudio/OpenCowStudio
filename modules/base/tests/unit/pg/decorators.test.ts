@@ -7,21 +7,27 @@ import {
   getAllPgEntityMetadata,
   scanPgEntities,
 } from '../../../src/pg'
-import * as userModule from './entities/user'
-import * as productModule from './entities/product'
-import * as snakeCaseModule from './entities/snake-case'
-import * as memberModule from './entities/member'
-import * as articleModule from './entities/article'
 
-const { User } = userModule
-const { Product } = productModule
-const { SnakeCase } = snakeCaseModule
-const { Member } = memberModule
-const { Article } = articleModule
+// Auto-import every entity file via Vite's glob (no per-file imports). Importing
+// the modules executes the @PgEntity decorators so classes self-register.
+const entityModules = import.meta.glob('./entities/*.ts', { eager: true })
 
 // Trigger entity scanning / registration before running assertions, so the
 // metadata is available without manually constructing each entity.
-scanPgEntities([userModule, productModule, snakeCaseModule, memberModule, articleModule])
+scanPgEntities(Object.values(entityModules) as Record<string, unknown>[])
+
+// Flatten the exported entity classes into a single lookup by name.
+const entities = Object.fromEntries(
+  Object.values(entityModules).flatMap(mod =>
+    Object.entries(mod as Record<string, unknown>),
+  ),
+) as Record<string, object>
+
+const User = entities.User
+const Product = entities.Product
+const SnakeCase = entities.SnakeCase
+const Member = entities.Member
+const Article = entities.Article
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -370,7 +376,7 @@ describe('Pg entity scanning & lookup', () => {
   })
 
   it('should return metadata for all scanned modules via scanPgEntities', () => {
-    const metas = scanPgEntities([memberModule, articleModule])
+    const metas = scanPgEntities(Object.values(entityModules) as Record<string, unknown>[])
     const tables = metas.map(m => m.table).sort()
     expect(tables).toContain('members')
     expect(tables).toContain('article')

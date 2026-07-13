@@ -131,11 +131,11 @@ function getColumnsMetadata(target: object): Map<string | symbol, PgColumnMetada
 function ensureEntityMetadata(target: object, opts: PgEntityOptions, className: string): PgEntityMetadata {
   const holder = target as EntityMetadataHolder
   if (!holder[ENTITY_METADATA]) {
-    const dbName = opts.dbName ?? ''
+    const dbName = opts.dbName ?? 'default'
     const schema = opts.schema?.trim() ? opts.schema : 'public'
     const table = opts.table?.trim() ? opts.table : toSnakeCase(className)
 
-    // Validate resolved identifier names (empty dbName means "default connection").
+    // Validate resolved identifier names (dbName defaults to "default" connection).
     if (dbName) assertValidIdentifier(dbName, 'dbName', `entity ${className}`)
     assertValidIdentifier(schema, 'schema', `entity ${className}`)
     assertValidIdentifier(table, 'table', `entity ${className}`)

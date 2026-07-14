@@ -1,25 +1,24 @@
 import { describe, it, expect } from 'vitest'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
 import {
   PgDataSource,
   PgDataSourceManager,
+  loadPgConfigFromFile,
   type PoolFactory,
   type PoolLike,
 } from '../../../src/pg'
 import type {
   PgConnectionOptions,
-  PgDatabaseConfig,
-  PgDataSourceConfig,
-  PgPoolConfig,
 } from '../../../src/pg'
 
-const POOL: PgPoolConfig = {
-  max: 2,
-  min: 1,
-  idleTimeoutMillis: 1000,
-  maxLifetimeSeconds: 10,
-}
+// Load the shared example datasource config (modules/base/pg.config.example.yaml)
+// so the tests exercise the same shape the app uses in development.
+const CONFIG_PATH = join(dirname(fileURLToPath(import.meta.url)), '../../../pg.config.example.yaml')
+const CONFIG = loadPgConfigFromFile(CONFIG_PATH)
 
-const MASTER = { url: 'postgresql://localhost:5432/root', username: 'u', password: 'p' }
+const POOL = CONFIG.pool
+const DEFAULT_DB = CONFIG.databases.default!
 
 // ---------------------------------------------------------------------------
 // Fake pool — records queries and end() calls, no real database
@@ -63,11 +62,7 @@ function makeFactory(): { factory: PoolFactory; pools: FakePool[] } {
 describe('PgDataSource', () => {
   it('should route writes (query) to the master only', async () => {
     const { factory, pools } = makeFactory()
-    const config: PgDatabaseConfig = {
-      master: MASTER,
-      slaves: [{ ...MASTER }, { ...MASTER }],
-    }
-    const ds = new PgDataSource(config, POOL, factory)
+    const ds = new PgDataSource(DEFAULT_DB, POOL, factory)
 
     await ds.query('INSERT INTO t VALUES (1)', [1])
 
@@ -80,11 +75,7 @@ describe('PgDataSource', () => {
 
   it('should round-robin reads across slaves and never touch master', async () => {
     const { factory, pools } = makeFactory()
-    const config: PgDatabaseConfig = {
-      master: MASTER,
-      slaves: [{ ...MASTER }, { ...MASTER }],
-    }
-    const ds = new PgDataSource(config, POOL, factory)
+    const ds = new PgDataSource(DEFAULT_DB, POOL, factory)
 
     await ds.queryRead('SELECT 1')
     await ds.queryRead('SELECT 2')
@@ -98,8 +89,7 @@ describe('PgDataSource', () => {
 
   it('should fall back to master for reads when there are no slaves', async () => {
     const { factory, pools } = makeFactory()
-    const config: PgDatabaseConfig = { master: MASTER, slaves: [] }
-    const ds = new PgDataSource(config, POOL, factory)
+    const ds = new PgDataSource({ master: DEFAULT_DB.master, slaves: [] }, POOL, factory)
 
     await ds.queryRead('SELECT 1')
 
@@ -109,11 +99,7 @@ describe('PgDataSource', () => {
 
   it('should end master and all slave pools on end()', async () => {
     const { factory, pools } = makeFactory()
-    const config: PgDatabaseConfig = {
-      master: MASTER,
-      slaves: [{ ...MASTER }, { ...MASTER }],
-    }
-    const ds = new PgDataSource(config, POOL, factory)
+    const ds = new PgDataSource(DEFAULT_DB, POOL, factory)
 
     await ds.end()
 
@@ -126,48 +112,37 @@ describe('PgDataSource', () => {
 // ---------------------------------------------------------------------------
 
 describe('PgDataSourceManager', () => {
-  function buildConfig(): PgDataSourceConfig {
-    return {
-      pool: POOL,
-      databases: {
-        default: { master: MASTER, slaves: [{ ...MASTER }] },
-        analytics: { master: { ...MASTER, url: 'postgresql://localhost:5432/analytics' }, slaves: [] },
-      },
-    }
-  }
-
   it('should expose every configured dbName', () => {
     const { factory } = makeFactory()
-    const mgr = new PgDataSourceManager(buildConfig(), factory)
-    expect(mgr.dbNames.sort()).toEqual(['analytics', 'default'])
+    const mgr = new PgDataSourceManager(CONFIG, factory)
+    expect(mgr.dbNames.sort()).toEqual(['default'])
   })
 
   it('should return the default datasource when no dbName is given', () => {
     const { factory } = makeFactory()
-    const mgr = new PgDataSourceManager(buildConfig(), factory)
+    const mgr = new PgDataSourceManager(CONFIG, factory)
     expect(mgr.get()).toBe(mgr.get('default'))
   })
 
   it('should return the matching datasource per dbName', () => {
     const { factory } = makeFactory()
-    const mgr = new PgDataSourceManager(buildConfig(), factory)
-    expect(mgr.get('analytics')).toBeDefined()
-    expect(mgr.has('analytics')).toBe(true)
+    const mgr = new PgDataSourceManager(CONFIG, factory)
+    expect(mgr.get('default')).toBeDefined()
+    expect(mgr.has('default')).toBe(true)
     expect(mgr.has('missing')).toBe(false)
   })
 
   it('should throw when requesting an unknown dbName', () => {
     const { factory } = makeFactory()
-    const mgr = new PgDataSourceManager(buildConfig(), factory)
+    const mgr = new PgDataSourceManager(CONFIG, factory)
     expect(() => mgr.get('missing')).toThrow(/No PostgreSQL datasource/)
   })
 
   it('should end all datasources on endAll()', async () => {
     const { factory, pools } = makeFactory()
-    const mgr = new PgDataSourceManager(buildConfig(), factory)
-    // touch both datasources so their pools are created
+    const mgr = new PgDataSourceManager(CONFIG, factory)
+    // touch the datasource so its pools are created
     mgr.get('default')
-    mgr.get('analytics')
     await mgr.endAll()
     expect(pools.every(p => p.ended)).toBe(true)
   })

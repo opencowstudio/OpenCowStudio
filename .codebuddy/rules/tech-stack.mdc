@@ -1,85 +1,126 @@
 ---
-description: Project tech stack and directory structure conventions for this Nuxt full-stack application
+description: Generic best practices and directory conventions for Nuxt 4, Vue 3, TypeScript and Vite projects (incl. modules, TS libraries and monorepos)
 globs:
 alwaysApply: true
 ---
 
-# Tech Stack & Directory Structure
+# Tech Stack & Best Practices
 
-This is a **Nuxt full-stack application** (Nuxt 4 + Vue 3 + TypeScript). It covers both frontend and backend within a single project.
+Guidance for projects built with **Nuxt 4 + Vue 3 + TypeScript + Vite**. This is framework-level convention, not project-specific.
 
 ## Tech Stack
 
-- **Full-Stack Framework:** Nuxt 4 (Vue 3 + Vue Router + Vite)
-- **Language:** TypeScript
-- **Package Manager:** pnpm
+- **Framework:** Nuxt 4 (built on Vue 3 + Vue Router + Vite)
+- **UI:** Vue 3 (`<script setup>` SFCs, Composition API)
+- **Language:** TypeScript (strict mode recommended)
+- **Bundler:** Vite (via Nuxt's build layer — do not configure Vite separately unless overriding `nuxt.config.ts`)
 
-## Environment Variables
+## Best Practices
 
-The project uses `.env` files to manage environment-specific configuration, following Nuxt's built-in runtime config convention:
+### Vue 3
+- Use `<script setup lang="ts">` for all components.
+- Prefer the Composition API; keep logic in composables under `composables/`.
+- Use `ref`/`computed`/`watch` from `vue`; avoid the Options API.
+- Keep components small, single-responsibility, and presentation-focused.
 
-| File | Environment | Description |
-|------|-------------|-------------|
-| `.env` | Development | Default environment variables for local development |
-| `.env.test` | Testing | Environment variables used when running unit/integration tests |
-| `.env.production` | Production | Environment variables for production deployment |
+### TypeScript
+- Enable `strict: true` in `tsconfig`.
+- Type component props with `defineProps<{ ... }>()` and emits with `defineEmits<{ ... }>()`.
+- Avoid `any`; use `unknown` and narrow when the type is truly dynamic.
+- Let Nuxt's auto-generated types (`*.d.ts`) handle route/asset/runtime-config typing.
 
-### Conventions
+### Nuxt 4
+- Use file-based routing under `pages/`; avoid manual router config.
+- Place server logic under `server/` (Nitro): `server/api`, `server/utils`, `server/middleware`.
+- Access runtime config via `useRuntimeConfig()` (server) and `useRuntimeConfig().public` (client).
+- Use `useAsyncData`/`useFetch` for SSR-safe data fetching.
+- Register modules via `nuxt.config.ts` `modules` array, not by manual plugin wiring.
 
-- Variables prefixed with `NUXT_` are automatically mapped to Nuxt runtime config (e.g., `NUXT_API_KEY` → `runtimeConfig.apiKey`)
-- Secrets (API keys, database credentials, etc.) should **never** be committed — only `.env.example` with placeholder values is tracked in version control
-- Use `useRuntimeConfig()` on the server side to access runtime config values
-- Use `useRuntimeConfig().public` on the client side for public (non-secret) config values
+### Vite
+- Rely on Nuxt's Vite integration; add custom Vite options through `nuxt.config.ts` `vite` key if needed.
+- Use `~` / `@` aliases provided by Nuxt instead of relative `../../../` imports.
+- Keep build-time-only deps in `devDependencies`.
 
-## Capabilities
+## Directory Conventions
 
-The project includes the following functional areas:
+Different kinds of projects follow different layouts. Pick the one that matches the package you are working in.
 
-1. **Client-Side Rendering (CSR):** Interactive Vue components that run in the browser
-2. **Server-Side Rendering (SSR):** Nuxt's hybrid rendering for SEO and performance
-3. **Server API:** Nuxt server routes (`server/api/`) for backend endpoints
-4. **Internationalization (i18n):** Multi-language support via `i18n/` locale configuration files
-5. **Database:** Server-side database access layer
-6. **Unit Testing:** Test suites for both frontend and backend code
+### Test code
 
-## Directory Structure
+- Place unit tests under `<pkg>/tests/unit/`, mirroring the `src/` layout, with files named `*.test.ts`.
+  - Alternatively colocate as `src/**/*.test.ts` next to the code under test.
+- Put shared fixtures and mocks under `<pkg>/tests/fixtures/`.
+- Use **Vitest**; configure via `<pkg>/vitest.config.ts` (or the root config in a monorepo).
+- Test files are excluded from the published/built output.
+
+### Nuxt App
 
 ```
-OpenCowStudio/
-├── app/                        # Frontend application (Nuxt 4 convention)
-│   ├── app.vue                 # Root application component
-│   ├── pages/                  # File-based routing (SSR + CSR pages)
-│   ├── components/             # Reusable Vue components
-│   ├── composables/            # Vue composables (auto-imported by Nuxt)
-│   └── layouts/                # Page layout templates
-├── modules/                    # Nuxt module projects (independent, reusable Nuxt modules)
-├── server/                     # Backend (Nitro server engine)
-│   ├── api/                    # API route handlers (auto-registered)
-│   ├── middleware/             # Server middleware
-│   ├── utils/                  # Server-side utilities
-│   └── database/               # Database access layer & queries
-├── i18n/                       # Internationalization configuration
-│   ├── locales/                # Locale JSON files (e.g., en.json, zh.json)
-│   └── config/                 # i18n module configuration
-├── public/                     # Static assets served at root
-├── tests/                      # Unit tests
-│   ├── unit/                   # Unit test files
-│   └── fixtures/               # Test fixtures and mocks
-├── .env                        # Development environment variables (git-ignored)
-├── .env.test                   # Testing environment variables (git-ignored)
-├── .env.production             # Production environment variables (git-ignored)
-├── .env.example                # Environment variable template with placeholder values (tracked)
-├── nuxt.config.ts              # Nuxt configuration entry
-├── tsconfig.json               # TypeScript configuration
-└── package.json                # Dependencies and scripts
+app/                  # Frontend application
+├── app.vue           # Root component
+├── pages/            # File-based routes (SSR + CSR)
+├── components/       # Auto-imported Vue components
+├── composables/      # Auto-imported composables
+├── layouts/          # Layout templates
+└── assets/           # Uncompiled assets (processed by Vite)
+server/               # Nitro backend
+├── api/              # API route handlers (auto-registered)
+├── middleware/       # Server middleware
+└── utils/            # Server-side utilities
+public/               # Static assets served at root (untouched)
+nuxt.config.ts        # Nuxt configuration entry
+.env / .env.example   # Env files live inside the app, not the repo root
 ```
 
-## Conventions
+### Nuxt Module
 
-- Follow Nuxt 4 directory conventions (`app/` directory for frontend code)
-- `modules/` holds Nuxt module projects — independent, reusable Nuxt modules that can be registered via `nuxt.config.ts`
-- Server API routes are defined in `server/api/` and auto-registered by Nitro
-- Vue composables in `app/composables/` are auto-imported by Nuxt
-- i18n locale files in `i18n/locales/` may contain non-English text per the target language
-- Database queries and models should be placed under `server/database/`
-- Unit tests mirror the source structure under `tests/`
+```
+src/
+├── index.ts          # defineNuxtModule entry (setup hook)
+├── runtime/          # Files shipped to the Nuxt/Nitro runtime
+│   └── *.ts          # plugins / composables used at runtime
+└── utils/            # Build-time helpers (fs scans, codegen, config)
+package.json          # "type": "module"; exports map; peerDeps on nuxt/@nuxt/kit
+```
+
+- The module entry (`src/index.ts`) runs at **build time**; it must not import runtime files directly. Runtime files are injected via `addPlugin` / `addServerPlugin` / virtual modules.
+- Keep framework-agnostic logic out of the module; depend on a separate TS library when possible.
+
+### Generic TypeScript Library
+
+```
+src/
+├── index.ts          # Public barrel re-exporting the public API
+└── <feature>/        # Implementation modules
+tests/unit/           # Unit tests (vitest), mirroring src/
+package.json          # "type": "module"; "exports" + "types"; no Nuxt/Vue deps
+tsconfig.json         # Extends the shared base; emits .d.ts
+```
+
+- Must stay framework-agnostic — never import `nuxt`, `@nuxt/kit`, or `nitropack`.
+- Expose the public API only through `src/index.ts` (barrel).
+
+### Composite Project (pnpm monorepo)
+
+```
+packages/             # Publishable libraries (TS libs, Nuxt modules)
+apps/                 # Deployable applications (Nuxt apps, docs sites)
+docker/               # Container / Docker assets (e.g. postgres)
+scripts/              # Dev/build/release/CI-CD helper scripts
+pnpm-workspace.yaml   # Globs: packages/*, apps/*
+tsconfig.base.json    # Shared base tsconfig extended by every package
+package.json          # Workspace root: cross-package scripts (build/typecheck/test)
+```
+
+- Reusable libraries go in `packages/*`; runnable apps go in `apps/*`.
+- Internal cross-package deps use the `workspace:*` protocol.
+- Shared TS config lives in `tsconfig.base.json`; each package extends it.
+- Root pnpm scripts orchestrate cross-package tasks (`pnpm -r`, `--filter`).
+
+### General conventions
+- Follow Nuxt 4 directory conventions for apps; do not reinvent routing or module loading.
+- Components in `components/` and composables in `composables/` are auto-imported — name them clearly and avoid collisions.
+- Server API routes live in `server/api/` and are auto-registered by Nitro; shared helpers go in `server/utils/`.
+- Keep `public/` for static files only; compiled assets belong in `app/assets/`.
+- Configuration belongs in `nuxt.config.ts`; avoid hard-coding env values — use runtime config + `.env`.
+- Tests mirror source layout and are never part of the published/built output.

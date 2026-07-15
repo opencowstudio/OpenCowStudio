@@ -1,0 +1,33 @@
+{
+  "name": "@opencowstudio/nuxt-pg",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@opencowstudio/pg-core": "workspace:*",
+    "@nuxt/kit": "^4.4.6",
+    "nuxt": "^4.4.6"
+  },
+  "peerDependencies": {
+    "nuxt": ">=4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "nitropack": "^2.13.4",
+    "typescript": "^5.8.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

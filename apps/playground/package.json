@@ -1,0 +1,30 @@
+{
+  "name": "@opencowstudio/playground",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "nuxt dev --open",
+    "dev:test": "nuxt dev --dotenv .env.test --open",
+    "dev:prod": "nuxt dev --dotenv .env.production --open",
+    "build": "nuxt build",
+    "build:test": "nuxt build --dotenv .env.test",
+    "build:prod": "nuxt build --dotenv .env.production",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "start": "node .output/server/index.mjs",
+    "prepare": "nuxt prepare",
+    "typecheck": "nuxt typecheck",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@opencowstudio/nuxt-pg": "workspace:*",
+    "@opencowstudio/pg-core": "workspace:*",
+    "nuxt": "^4.4.6",
+    "uuid": "^14.0.0",
+    "vue": "^3.5.34",
+    "vue-router": "^5.0.7"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.7"
+  }
+}

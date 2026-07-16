@@ -6,20 +6,20 @@ import {
   PgColumn,
   getPgEntityMetadata,
   getAllPgEntityMetadata,
-  scanPgEntities,
+  resolvePgEntities,
 } from '../../../src/pg'
 
 const logger = {
   info: (...args: unknown[]): void => console.log('[test]', ...args),
 }
 
-// Auto-import every entity file via Vite's glob (no per-file imports). Importing
-// the modules executes the @PgEntity decorators so classes self-register.
+// Import every entity module eagerly so the @PgEntity decorators execute and
+// the classes self-register at module-evaluation time.
 const entityModules = import.meta.glob('./entities/*.ts', { eager: true })
 
-// Trigger entity scanning / registration before running assertions, so the
-// metadata is available without manually constructing each entity.
-scanPgEntities(Object.values(entityModules) as Record<string, unknown>[])
+// Resolve entity metadata before running assertions, so the metadata is
+// available without manually constructing each entity.
+resolvePgEntities(Object.values(entityModules) as Record<string, unknown>[])
 
 // Flatten the exported entity classes into a single lookup by name.
 const entities = Object.fromEntries(
@@ -359,7 +359,7 @@ describe('Pg decorators — PgColumn columnType requirement', () => {
   })
 })
 
-describe('Pg entity scanning & lookup', () => {
+describe('Pg entity resolution & lookup', () => {
   it('should build metadata for an entity without manually constructing it', () => {
     const meta = getPgEntityMetadata(Member)
     expect(meta).toBeDefined()
@@ -380,8 +380,8 @@ describe('Pg entity scanning & lookup', () => {
     expect(meta!.table).toBe('article')
   })
 
-  it('should return metadata for all scanned modules via scanPgEntities', () => {
-    const metas = scanPgEntities(Object.values(entityModules) as Record<string, unknown>[])
+  it('should return metadata for all modules via resolvePgEntities', () => {
+    const metas = resolvePgEntities(Object.values(entityModules) as Record<string, unknown>[])
     const tables = metas.map(m => m.table).sort()
     expect(tables).toContain('members')
     expect(tables).toContain('article')

@@ -5,8 +5,6 @@ application.
 
 ## What it does
 
-- Scans every `**/entities/*.ts` file in the project for `@PgEntity`-decorated
-  classes so their metadata is discovered without manual construction.
 - Loads the PostgreSQL datasource config (default `pg.config.yaml` at the
   project root) at build time and injects it into the **server-only** runtime
   config, so credentials never reach the client bundle.

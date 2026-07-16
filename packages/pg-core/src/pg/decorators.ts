@@ -96,8 +96,8 @@ const RESOLVED_METADATA = Symbol('pg:entity:resolved')
 
 /**
  * Registry of every class decorated with @PgEntity, keyed by constructor.
- * Populated at class-definition time so entities can be discovered and
- * finalised without manual construction by the consumer.
+ * Populated at class-definition time so entity metadata can be resolved
+ * without manual construction by the consumer.
  */
 const ENTITY_REGISTRY = new Map<Function, PgEntityOptions>()
 
@@ -256,7 +256,7 @@ export function PgEntity(options: PgEntityOptions = {}): <C extends abstract new
     // pre-initialise the key / column maps so field decorators can use them
     ensureKeysMetadata(target)
     ensureColumnsMetadata(target)
-    // self-register so the class can be discovered by the scanner
+    // self-register so the class can be resolved later
     ENTITY_REGISTRY.set(value, options)
   }
 }
@@ -311,23 +311,23 @@ export function getPgEntityMetadata<T extends object>(ctor: T): PgEntityMetadata
 }
 
 /**
- * Finalise and return metadata for every entity discovered in the given
- * imported modules (the shape produced by `import.meta.glob`). Modules that
- * were already registered are also included. Returns fully-assembled
- * `PgEntityMetadata` for all known entities.
+ * Finalise and return metadata for every entity contained in the given
+ * imported modules. Each module's exported values are inspected; exported
+ * classes registered via @PgEntity are finalised so their field metadata is
+ * collected. Returns fully-assembled `PgEntityMetadata` for all known entities.
  */
-export function scanPgEntities(modules: Record<string, unknown>[] = []): PgEntityMetadata[] {
-  logger.info('Scanning modules for @PgEntity decorators...')
-  let found = 0
+export function resolvePgEntities(modules: Record<string, unknown>[] = []): PgEntityMetadata[] {
+  logger.info('Resolving @PgEntity metadata from imported modules...')
+  let resolved = 0
   for (const mod of modules) {
     for (const exported of Object.values(mod)) {
       if (typeof exported === 'function' && ENTITY_REGISTRY.has(exported as Function)) {
         finalizePgEntity(exported as Function)
-        found++
+        resolved++
       }
     }
   }
-  logger.info(`Found ${found} @PgEntity decorator(s) across ${modules.length} module(s)`)
+  logger.info(`Resolved ${resolved} @PgEntity class(es) across ${modules.length} module(s)`)
   return getAllPgEntityMetadata()
 }
 

@@ -7,7 +7,7 @@ A PostgreSQL ORM for Nuxt, organised as a pnpm monorepo.
 | Package | Description |
 |---------|-------------|
 | [`@opencowstudio/pg-core`](./packages/pg-core) | Framework-agnostic ORM core: decorators, config loading, connection-pool routing and id generation. |
-| [`@opencowstudio/nuxt-pg`](./packages/nuxt-pg) | Nuxt module that wires `@opencowstudio/pg-core` into a Nuxt/Nitro app (entity scanning, config injection, server plugin). |
+| [`@opencowstudio/nuxt-pg`](./packages/nuxt-pg) | Nuxt module that wires `@opencowstudio/pg-core` into a Nuxt/Nitro app (entity resolution, config injection, server plugin). |
 
 ## Apps
 

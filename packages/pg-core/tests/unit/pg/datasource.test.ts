@@ -2,18 +2,18 @@ import { describe, it, expect } from 'vitest'
 import {
   PgDataSource,
   PgDataSourceManager,
-  definePgConfig,
   type PoolFactory,
   type PoolLike,
 } from '../../../src/pg'
 import type {
-  PgConnectionOptions,
+  PgConfigMetadata,
+  PgNodeMetadata,
 } from '../../../src/pg'
 
 // Build the datasource config metadata in code (mirrors
 // packages/pg-core/pg.config.example.yaml) so the tests exercise the same
 // shape the app uses in development.
-const CONFIG = definePgConfig({
+const CONFIG: PgConfigMetadata = {
   pool: {
     max: 18,
     min: 18,
@@ -41,7 +41,7 @@ const CONFIG = definePgConfig({
       ],
     },
   },
-})
+}
 
 const POOL = CONFIG.pool
 const DEFAULT_DB = CONFIG.databases.default!
@@ -69,8 +69,8 @@ class FakePool implements PoolLike {
 
 function makeFactory(): { factory: PoolFactory; pools: FakePool[] } {
   const pools: FakePool[] = []
-  const factory: PoolFactory = (opts: PgConnectionOptions) => {
-    const pool = new FakePool(`${opts.database}:${opts.host}`)
+  const factory: PoolFactory = (node: PgNodeMetadata) => {
+    const pool = new FakePool(node.url)
     pools.push(pool)
     return pool
   }

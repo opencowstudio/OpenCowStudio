@@ -6,19 +6,17 @@ application.
 ## What it does
 
 - Accepts the PostgreSQL datasource configuration as code via the `pgConfig`
-  module option (a `definePgConfig` metadata object) and injects it into the
+  module option (a `PgConfigMetadata` object) and injects it into the
   **server-only** runtime config, so credentials never reach the client bundle.
 
 ## Usage
 
 ```ts
 // nuxt.config.ts
-import { definePgConfig } from '@opencowstudio/pg-core'
-
 export default defineNuxtConfig({
   modules: [
     ['@opencowstudio/nuxt-pg', {
-      pgConfig: definePgConfig({
+      pgConfig: {
         pool: { max: 18, min: 18, idleTimeoutMillis: 600000, maxLifetimeSeconds: 1800 },
         databases: {
           default: {
@@ -26,7 +24,7 @@ export default defineNuxtConfig({
             slaves: [],
           },
         },
-      }),
+      },
     }],
   ],
 })

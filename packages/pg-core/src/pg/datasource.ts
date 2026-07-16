@@ -1,11 +1,10 @@
 import { Pool } from 'pg'
 import {
-  toConnectionOptions,
   type PgConfigMetadata,
-  type PgConnectionOptions,
-  type PgDatabaseConfig,
-  type PgPoolConfig,
-} from './config.ts'
+  type PgDatabaseMetadata,
+  type PgNodeMetadata,
+  type PgPoolMetadata,
+} from './types.ts'
 
 // ---------------------------------------------------------------------------
 // Pool abstraction
@@ -22,12 +21,27 @@ export interface PoolLike {
   end(): Promise<void>
 }
 
-/** Builds a pool from resolved connection options. Injectable for testing. */
-export type PoolFactory = (options: PgConnectionOptions) => PoolLike
+/** Builds a pool from a node's metadata plus the shared pool metadata. Injectable for testing. */
+export type PoolFactory = (node: PgNodeMetadata, pool: PgPoolMetadata) => PoolLike
 
-/** Default factory: a real node-postgres connection pool. */
-function defaultPoolFactory(options: PgConnectionOptions): PoolLike {
-  return new Pool(options)
+const DEFAULT_PG_PORT = 5432
+
+/** Default factory: a real node-postgres connection pool, built directly from the metadata. */
+function defaultPoolFactory(node: PgNodeMetadata, pool: PgPoolMetadata): PoolLike {
+  const url = new URL(node.url)
+  const port = url.port ? Number(url.port) : DEFAULT_PG_PORT
+  const database = url.pathname.replace(/^\/+/, '')
+  return new Pool({
+    host: url.hostname,
+    port,
+    database,
+    user: node.username,
+    password: node.password,
+    max: pool.max,
+    min: pool.min,
+    idleTimeoutMillis: pool.idleTimeoutMillis,
+    maxLifetimeSeconds: pool.maxLifetimeSeconds,
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -40,12 +54,12 @@ export class PgDataSource {
   private slaveCursor = 0
 
   constructor(
-    database: PgDatabaseConfig,
-    pool: PgPoolConfig,
+    database: PgDatabaseMetadata,
+    pool: PgPoolMetadata,
     factory: PoolFactory = defaultPoolFactory,
   ) {
-    this.master = factory(toConnectionOptions(database.master, pool))
-    this.slaves = database.slaves.map(s => factory(toConnectionOptions(s, pool)))
+    this.master = factory(database.master, pool)
+    this.slaves = database.slaves.map(s => factory(s, pool))
   }
 
   /** Write path: always routed to the master. */
@@ -73,10 +87,10 @@ export class PgDataSource {
 }
 
 // ---------------------------------------------------------------------------
-// PgDataSourceManager — multi-database registry keyed by dbName
+// PgDataSourceManager — initialize from metadata & look up by dbName
 //
-// The `dbName` of an entity (see @PgEntity) resolves to one of these
-// datasources. Unknown names throw so misconfiguration fails fast.
+// Constructed directly from `PgConfigMetadata`; the `dbName` of an entity (see
+// @PgEntity) resolves to one of the registered datasources via `get`.
 // ---------------------------------------------------------------------------
 
 export class PgDataSourceManager {

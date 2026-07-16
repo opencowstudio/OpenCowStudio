@@ -14,19 +14,12 @@ export type {
   PgColumnMetadata,
 } from './types.ts'
 
-// Configuration (typed metadata definition & URL parsing)
-export {
-  parsePgUrl,
-  toConnectionOptions,
-  definePgConfig,
-} from './config.ts'
 export type {
-  PgPoolConfig,
-  PgNodeConfig,
-  PgDatabaseConfig,
+  PgPoolMetadata,
+  PgNodeMetadata,
+  PgDatabaseMetadata,
   PgConfigMetadata,
-  PgConnectionOptions,
-} from './config.ts'
+} from './types.ts'
 
 // DataSource (connection-pool routing & multi-database registry)
 export { PgDataSource, PgDataSourceManager } from './datasource.ts'

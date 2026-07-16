@@ -1,6 +1,19 @@
-/**
- * PostgreSQL decorator option types
- */
+// ---------------------------------------------------------------------------
+// PostgreSQL metadata — type definitions
+//
+// This module holds ONLY type definitions for every piece of PostgreSQL
+// metadata used by pg-core:
+//
+//   * Decorator metadata — captured on entity classes by the @PgEntity /
+//     @PgKey / @PgColumn decorators (PgEntityMetadata, PgKeyMetadata, ...).
+//   * Configuration metadata — the datasource definition (pool / node /
+//     database) supplied as a `PgConfigMetadata` object.
+//
+// All runtime logic (URL parsing, datasource creation)
+// lives in `datasource.ts`.
+// ---------------------------------------------------------------------------
+
+// === Decorator metadata =====================================================
 
 /** Options for @PgKey decorator */
 export interface PgKeyOptions {
@@ -88,4 +101,44 @@ export interface PgColumnMetadata {
   column: string
   comment: string
   columnType: PgColumnType
+}
+
+// === Configuration metadata =================================================
+
+// A project defines its PostgreSQL datasource configuration *in code* as a
+// `PgConfigMetadata` object. The metadata describes one shared pool and one or
+// more databases. Each database is keyed by `dbName` and owns a master node
+// plus an optional list of read-replica (slave) nodes. The entity decorator's
+// `dbName` option maps directly to these keys.
+
+/** Shared connection-pool tuning applied to every node. */
+export interface PgPoolMetadata {
+  /** maximum number of clients in the pool */
+  max: number
+  /** minimum number of clients kept alive in the pool */
+  min: number
+  /** idle timeout of a client before it is closed (milliseconds) */
+  idleTimeoutMillis: number
+  /** maximum lifetime of a client before it is recycled (seconds) */
+  maxLifetimeSeconds: number
+}
+
+/** A single PostgreSQL node (master or slave): a standard URL + credentials. */
+export interface PgNodeMetadata {
+  /** standard PostgreSQL URL, e.g. postgresql://host:port/db */
+  url: string
+  username: string
+  password: string
+}
+
+/** One database: a master plus an optional list of read replicas. */
+export interface PgDatabaseMetadata {
+  master: PgNodeMetadata
+  slaves: PgNodeMetadata[]
+}
+
+/** Top-level datasource configuration metadata defined in code. */
+export interface PgConfigMetadata {
+  pool: PgPoolMetadata
+  databases: Record<string, PgDatabaseMetadata>
 }

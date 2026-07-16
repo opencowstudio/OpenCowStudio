@@ -4,9 +4,8 @@ import {
   PgEntity,
   PgKey,
   PgColumn,
-  getPgEntityMetadata,
-  getAllPgEntityMetadata,
   resolvePgEntities,
+  type PgEntityMetadata,
 } from '../../../src/pg'
 
 const logger = {
@@ -19,20 +18,14 @@ const entityModules = import.meta.glob('./entities/*.ts', { eager: true })
 
 // Resolve entity metadata before running assertions, so the metadata is
 // available without manually constructing each entity.
-resolvePgEntities(Object.values(entityModules) as Record<string, unknown>[])
+const allMetas = resolvePgEntities(Object.values(entityModules) as Record<string, unknown>[])
+const metaByTable = new Map(allMetas.map(m => [m.table, m]))
 
-// Flatten the exported entity classes into a single lookup by name.
-const entities = Object.fromEntries(
-  Object.values(entityModules).flatMap(mod =>
-    Object.entries(mod as Record<string, unknown>),
-  ),
-) as Record<string, object>
-
-const User = entities.User!
-const Product = entities.Product!
-const SnakeCase = entities.SnakeCase!
-const Member = entities.Member!
-const Article = entities.Article!
+function metaFor(table: string): PgEntityMetadata {
+  const meta = metaByTable.get(table)
+  if (!meta) throw new Error(`No resolved metadata for table "${table}"`)
+  return meta
+}
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -40,33 +33,33 @@ const Article = entities.Article!
 
 describe('Pg decorators — definition & parsing', () => {
   it('should parse User entity metadata', () => {
-    const meta = getPgEntityMetadata(User)
+    const meta = metaFor('users')
     expect(meta).toBeDefined()
     // eslint-disable-next-line no-console
     logger.info('Parsed User entity metadata:', JSON.stringify(meta, null, 2))
 
-    expect(meta!.table).toBe('users')
-    expect(meta!.schema).toBe('public')
-    expect(meta!.comment).toBe('Application users')
-    expect(meta!.createTableAuto).toBe(true)
-    expect(meta!.indexes).toEqual([{ columns: ['email'], unique: true }])
+    expect(meta.table).toBe('users')
+    expect(meta.schema).toBe('public')
+    expect(meta.comment).toBe('Application users')
+    expect(meta.createTableAuto).toBe(true)
+    expect(meta.indexes).toEqual([{ columns: ['email'], unique: true }])
 
-    expect(meta!.keys).toHaveLength(1)
-    expect(meta!.keys[0]).toMatchObject({
+    expect(meta.keys).toHaveLength(1)
+    expect(meta.keys[0]).toMatchObject({
       propertyKey: 'id',
       column: 'id',
       generated: false,
       comment: '',
     })
 
-    expect(meta!.columns).toHaveLength(3)
-    expect(meta!.columns).toContainEqual({
+    expect(meta.columns).toHaveLength(3)
+    expect(meta.columns).toContainEqual({
       propertyKey: 'email',
       column: 'email',
       comment: 'Login email',
       columnType: 'TEXT',
     })
-    expect(meta!.columns).toContainEqual({
+    expect(meta.columns).toContainEqual({
       propertyKey: 'createdAt',
       column: 'created_at',
       comment: '',
@@ -75,29 +68,29 @@ describe('Pg decorators — definition & parsing', () => {
   })
 
   it('should derive defaults when options are omitted (Product entity)', () => {
-    const meta = getPgEntityMetadata(Product)
+    const meta = metaFor('product')
     expect(meta).toBeDefined()
     // eslint-disable-next-line no-console
     logger.info('Parsed Product entity metadata:', JSON.stringify(meta, null, 2))
 
     // table defaults to snake_case of the class name (derived by the decorator)
-    expect(meta!.table).toBe('product')
-    expect(meta!.createTableAuto).toBe(true)
+    expect(meta.table).toBe('product')
+    expect(meta.createTableAuto).toBe(true)
 
-    expect(meta!.keys[0]).toMatchObject({
+    expect(meta.keys[0]).toMatchObject({
       propertyKey: 'productId',
       column: 'product_id',
       generated: true,
       comment: '',
     })
 
-    expect(meta!.columns).toContainEqual({
+    expect(meta.columns).toContainEqual({
       propertyKey: 'name',
       column: 'name',
       comment: '',
       columnType: 'TEXT',
     })
-    expect(meta!.columns).toContainEqual({
+    expect(meta.columns).toContainEqual({
       propertyKey: 'price',
       column: 'price',
       comment: '',
@@ -106,59 +99,59 @@ describe('Pg decorators — definition & parsing', () => {
   })
 
   it('should default schema to "public" and table to snake_case class name when omitted', () => {
-    const meta = getPgEntityMetadata(Product)
+    const meta = metaFor('product')
     expect(meta).toBeDefined()
 
     // schema defaults to 'public' when not provided
-    expect(meta!.schema).toBe('public')
+    expect(meta.schema).toBe('public')
     // table defaults to snake_case of the class name when not provided
-    expect(meta!.table).toBe('product')
+    expect(meta.table).toBe('product')
 
     // snake_case of a multi-word class name
-    const snakeMeta = getPgEntityMetadata(SnakeCase)
-    expect(snakeMeta!.table).toBe('snake_case')
+    const snakeMeta = metaFor('snake_case')
+    expect(snakeMeta.table).toBe('snake_case')
   })
 
   it('should keep provided schema and table when explicitly set', () => {
-    const meta = getPgEntityMetadata(User)
-    expect(meta!.schema).toBe('public')
-    expect(meta!.table).toBe('users')
+    const meta = metaFor('users')
+    expect(meta.schema).toBe('public')
+    expect(meta.table).toBe('users')
   })
 
   it('should derive snake_case column from field name when column option is omitted', () => {
-    const meta = getPgEntityMetadata(SnakeCase)
+    const meta = metaFor('snake_case')
     expect(meta).toBeDefined()
 
-    expect(meta!.keys[0]).toMatchObject({
+    expect(meta.keys[0]).toMatchObject({
       propertyKey: 'userId',
       column: 'user_id',
     })
 
-    expect(meta!.columns).toContainEqual({
+    expect(meta.columns).toContainEqual({
       propertyKey: 'firstName',
       column: 'first_name',
       comment: '',
       columnType: 'TEXT',
     })
-    expect(meta!.columns).toContainEqual({
+    expect(meta.columns).toContainEqual({
       propertyKey: 'lastName',
       column: 'last_name',
       comment: '',
       columnType: 'TEXT',
     })
-    expect(meta!.columns).toContainEqual({
+    expect(meta.columns).toContainEqual({
       propertyKey: 'userID',
       column: 'user_id',
       comment: '',
       columnType: 'BIGINT',
     })
-    expect(meta!.columns).toContainEqual({
+    expect(meta.columns).toContainEqual({
       propertyKey: 'httpStatusCode',
       column: 'http_status_code',
       comment: '',
       columnType: 'BIGINT',
     })
-    expect(meta!.columns).toContainEqual({
+    expect(meta.columns).toContainEqual({
       propertyKey: 'displayName',
       column: 'display_name',
       comment: '',
@@ -320,15 +313,15 @@ describe('Pg decorators — PgColumn columnType requirement', () => {
       tags!: Array<string>
     }
 
-    new Typed()
-    const meta = getPgEntityMetadata(Typed)
-    expect(meta!.columns).toContainEqual({
+    const metas = resolvePgEntities([{ Typed } as Record<string, unknown>])
+    const meta = metas.find(m => m.table === 'typed')!
+    expect(meta.columns).toContainEqual({
       propertyKey: 'data',
       column: 'data',
       comment: '',
       columnType: 'JSON_OBJECT',
     })
-    expect(meta!.columns).toContainEqual({
+    expect(meta.columns).toContainEqual({
       propertyKey: 'tags',
       column: 'tags',
       comment: '',
@@ -361,13 +354,13 @@ describe('Pg decorators — PgColumn columnType requirement', () => {
 
 describe('Pg entity resolution & lookup', () => {
   it('should build metadata for an entity without manually constructing it', () => {
-    const meta = getPgEntityMetadata(Member)
+    const meta = metaFor('members')
     expect(meta).toBeDefined()
-    expect(meta!.table).toBe('members')
-    expect(meta!.schema).toBe('public')
-    expect(meta!.keys).toHaveLength(1)
-    expect(meta!.keys[0]).toMatchObject({ propertyKey: 'id', column: 'id' })
-    expect(meta!.columns).toContainEqual({
+    expect(meta.table).toBe('members')
+    expect(meta.schema).toBe('public')
+    expect(meta.keys).toHaveLength(1)
+    expect(meta.keys[0]).toMatchObject({ propertyKey: 'id', column: 'id' })
+    expect(meta.columns).toContainEqual({
       propertyKey: 'name',
       column: 'name',
       comment: '',
@@ -376,8 +369,8 @@ describe('Pg entity resolution & lookup', () => {
   })
 
   it('should derive table from class name when not provided', () => {
-    const meta = getPgEntityMetadata(Article)
-    expect(meta!.table).toBe('article')
+    const meta = metaFor('article')
+    expect(meta.table).toBe('article')
   })
 
   it('should return metadata for all modules via resolvePgEntities', () => {
@@ -387,21 +380,16 @@ describe('Pg entity resolution & lookup', () => {
     expect(tables).toContain('article')
   })
 
-  it('should return metadata for all registered entities via getAllPgEntityMetadata', () => {
-    const metas = getAllPgEntityMetadata()
-    const tables = metas.map(m => m.table).sort()
-    expect(tables).toContain('members')
-    expect(tables).toContain('article')
-  })
-
-  it('should return undefined for a non-entity class', () => {
+  it('should return no metadata for a non-entity class', () => {
     class Plain {}
-    expect(getPgEntityMetadata(Plain)).toBeUndefined()
+    const metas = resolvePgEntities([{ Plain } as Record<string, unknown>])
+    expect(metas).toHaveLength(0)
   })
 
-  it('should make getPgEntityMetadata idempotent (cached, no repeated construction)', () => {
-    const first = getPgEntityMetadata(Member)
-    const second = getPgEntityMetadata(Member)
-    expect(second).toBe(first)
+  it('should re-parse metadata on every call (no caching)', () => {
+    const first = resolvePgEntities(Object.values(entityModules) as Record<string, unknown>[])
+    const second = resolvePgEntities(Object.values(entityModules) as Record<string, unknown>[])
+    expect(second).not.toBe(first)
+    expect(second.map(m => m.table).sort()).toEqual(first.map(m => m.table).sort())
   })
 })

@@ -4,8 +4,8 @@ Framework-agnostic PostgreSQL ORM core for [`opencowstudio`](../../README.md).
 
 This package contains everything that does **not** depend on Nuxt:
 
-- `@PgEntity` / `@PgKey` / `@PgColumn` decorators and their metadata helpers
-  (`getPgEntityMetadata`, `getAllPgEntityMetadata`, `resolvePgEntities`).
+- `@PgEntity` / `@PgKey` / `@PgColumn` decorators and their metadata helper
+  (`resolvePgEntities`), which re-parses entity metadata on every call.
 - Typed YAML datasource configuration loading & validation
   (`loadPgConfigFromFile`, `loadPgConfigFromYaml`, `parsePgUrl`, …).
 - Connection-pool routing & multi-database registry

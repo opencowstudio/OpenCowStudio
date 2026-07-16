@@ -1,9 +1,9 @@
 import { Pool } from 'pg'
 import {
   toConnectionOptions,
+  type PgConfigMetadata,
   type PgConnectionOptions,
   type PgDatabaseConfig,
-  type PgDataSourceConfig,
   type PgPoolConfig,
 } from './config.ts'
 
@@ -84,7 +84,7 @@ export class PgDataSourceManager {
   readonly defaultDbName: string
 
   constructor(
-    config: PgDataSourceConfig,
+    config: PgConfigMetadata,
     factory?: PoolFactory,
     defaultDbName = 'default',
   ) {

@@ -5,27 +5,41 @@ application.
 
 ## What it does
 
-- Loads the PostgreSQL datasource config (default `pg.config.yaml` at the
-  project root) at build time and injects it into the **server-only** runtime
-  config, so credentials never reach the client bundle.
-- Registers a Nitro plugin that builds a shared `PgDataSourceManager` from the
-  runtime config, available via `usePgDataSourceManager()`.
+- Accepts the PostgreSQL datasource configuration as code via the `pgConfig`
+  module option (a `definePgConfig` metadata object) and injects it into the
+  **server-only** runtime config, so credentials never reach the client bundle.
 
 ## Usage
 
 ```ts
 // nuxt.config.ts
+import { definePgConfig } from '@opencowstudio/pg-core'
+
 export default defineNuxtConfig({
-  modules: ['@opencowstudio/nuxt-pg'],
+  modules: [
+    ['@opencowstudio/nuxt-pg', {
+      pgConfig: definePgConfig({
+        pool: { max: 18, min: 18, idleTimeoutMillis: 600000, maxLifetimeSeconds: 1800 },
+        databases: {
+          default: {
+            master: { url: 'postgresql://localhost:5432/opencowstudio_dev', username: 'postgres', password: 'postgres' },
+            slaves: [],
+          },
+        },
+      }),
+    }],
+  ],
 })
 ```
 
 ```ts
 // server/api/users.get.ts
-import { usePgDataSourceManager } from '@opencowstudio/nuxt-pg/runtime'
+import { PgDataSourceManager } from '@opencowstudio/pg-core'
+import type { PgConfigMetadata } from '@opencowstudio/pg-core'
 
 export default defineEventHandler(() => {
-  const ds = usePgDataSourceManager().get()
+  const config = useRuntimeConfig().pg as unknown as PgConfigMetadata
+  const ds = new PgDataSourceManager(config).get()
   return ds.query('SELECT 1')
 })
 ```

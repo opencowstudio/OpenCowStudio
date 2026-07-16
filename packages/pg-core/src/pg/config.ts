@@ -1,14 +1,11 @@
-import { readFileSync } from 'node:fs'
-import { parse as parseYaml } from 'yaml'
-
 // ---------------------------------------------------------------------------
-// Configuration types
+// Configuration metadata
 //
-// A project provides a single YAML file (default: pg.config.yaml at the
-// project root) describing one shared pool and one or more databases. Each
-// database is keyed by `dbName` and owns a master node plus an optional list
-// of read-replica (slave) nodes. The entity decorator's `dbName` option maps
-// directly to these keys.
+// A project defines its PostgreSQL datasource configuration *in code* as a
+// typed metadata object (see `definePgConfig`). The metadata describes one
+// shared pool and one or more databases. Each database is keyed by `dbName`
+// and owns a master node plus an optional list of read-replica (slave) nodes.
+// The entity decorator's `dbName` option maps directly to these keys.
 // ---------------------------------------------------------------------------
 
 /** Shared connection-pool tuning applied to every node. */
@@ -37,8 +34,8 @@ export interface PgDatabaseConfig {
   slaves: PgNodeConfig[]
 }
 
-/** Top-level datasource configuration loaded from the project file. */
-export interface PgDataSourceConfig {
+/** Top-level datasource configuration metadata defined in code. */
+export interface PgConfigMetadata {
   pool: PgPoolConfig
   databases: Record<string, PgDatabaseConfig>
 }
@@ -117,7 +114,7 @@ export function toConnectionOptions(node: PgNodeConfig, pool: PgPoolConfig): PgC
 }
 
 // ---------------------------------------------------------------------------
-// YAML loading & validation
+// Metadata validation
 // ---------------------------------------------------------------------------
 
 function requireNumber(value: unknown, path: string): number {
@@ -127,51 +124,31 @@ function requireNumber(value: unknown, path: string): number {
   return value
 }
 
-function normalizePool(raw: unknown): PgPoolConfig {
-  if (!raw || typeof raw !== 'object') {
-    throw new Error('Invalid pg config: "pool" section is required.')
-  }
-  const pool = raw as Record<string, unknown>
-
-  // Backwards-compat: tolerate the common "idleTtimeoutMillis" typo.
-  let idleTimeoutMillis = pool.idleTimeoutMillis
-  if (idleTimeoutMillis === undefined && pool.idleTtimeoutMillis !== undefined) {
-    idleTimeoutMillis = pool.idleTtimeoutMillis
-    // eslint-disable-next-line no-console
-    console.warn('[pg] "pool.idleTtimeoutMillis" is a typo; use "idleTimeoutMillis". It has been accepted for compatibility.')
-  }
-
+function normalizePool(pool: PgPoolConfig): PgPoolConfig {
   return {
     max: requireNumber(pool.max, 'pool.max'),
     min: requireNumber(pool.min, 'pool.min'),
-    idleTimeoutMillis: requireNumber(idleTimeoutMillis, 'pool.idleTimeoutMillis'),
+    idleTimeoutMillis: requireNumber(pool.idleTimeoutMillis, 'pool.idleTimeoutMillis'),
     maxLifetimeSeconds: requireNumber(pool.maxLifetimeSeconds, 'pool.maxLifetimeSeconds'),
   }
 }
 
-function normalizeNode(raw: unknown, path: string): PgNodeConfig {
-  if (!raw || typeof raw !== 'object') {
-    throw new Error(`Invalid pg config: node "${path}" must be a mapping with url/username/password.`)
-  }
-  const node = raw as Record<string, unknown>
-  const { url, username, password } = node
-  if (typeof url !== 'string' || !url) {
+function normalizeNode(node: PgNodeConfig, path: string): PgNodeConfig {
+  if (typeof node.url !== 'string' || !node.url) {
     throw new Error(`Invalid pg config: node "${path}".url is required and must be a string.`)
   }
-  if (typeof username !== 'string') {
+  if (typeof node.username !== 'string') {
     throw new Error(`Invalid pg config: node "${path}".username is required and must be a string.`)
   }
-  if (typeof password !== 'string') {
+  if (typeof node.password !== 'string') {
     throw new Error(`Invalid pg config: node "${path}".password is required and must be a string.`)
   }
-  return { url, username, password }
+  // Fail fast on a malformed URL rather than at pool-creation time.
+  parsePgUrl(node.url)
+  return { url: node.url, username: node.username, password: node.password }
 }
 
-function normalizeDatabase(raw: unknown, dbName: string): PgDatabaseConfig {
-  if (!raw || typeof raw !== 'object') {
-    throw new Error(`Invalid pg config: database "${dbName}" must be a mapping with "master" and optional "slaves".`)
-  }
-  const db = raw as Record<string, unknown>
+function normalizeDatabase(db: PgDatabaseConfig, dbName: string): PgDatabaseConfig {
   if (!db.master || typeof db.master !== 'object') {
     throw new Error(`Invalid pg config: database "${dbName}" requires a "master" node.`)
   }
@@ -189,11 +166,10 @@ function normalizeDatabase(raw: unknown, dbName: string): PgDatabaseConfig {
   return { master, slaves }
 }
 
-function normalizeDatabases(raw: unknown): Record<string, PgDatabaseConfig> {
-  if (!raw || typeof raw !== 'object') {
+function normalizeDatabases(databases: Record<string, PgDatabaseConfig>): Record<string, PgDatabaseConfig> {
+  if (!databases || typeof databases !== 'object') {
     throw new Error('Invalid pg config: "databases" section is required and must map dbName -> { master, slaves }.')
   }
-  const databases = raw as Record<string, unknown>
   const out: Record<string, PgDatabaseConfig> = {}
   for (const [dbName, dbRaw] of Object.entries(databases)) {
     if (!dbName) {
@@ -207,20 +183,15 @@ function normalizeDatabases(raw: unknown): Record<string, PgDatabaseConfig> {
   return out
 }
 
-/** Parse and validate a YAML string into a typed datasource config. */
-export function loadPgConfigFromYaml(content: string): PgDataSourceConfig {
-  const raw = parseYaml(content)
-  if (!raw || typeof raw !== 'object') {
-    throw new Error('Invalid pg config: expected a YAML mapping at the top level.')
-  }
-  const doc = raw as Record<string, unknown>
-  const pool = normalizePool(doc.pool)
-  const databases = normalizeDatabases(doc.databases)
+/**
+ * Define and validate the PostgreSQL datasource configuration as code.
+ *
+ * The returned, normalized metadata is what `PgDataSourceManager` consumes to
+ * build its connection pools. Validation fails fast with a descriptive error
+ * so misconfiguration surfaces at startup rather than at query time.
+ */
+export function definePgConfig(metadata: PgConfigMetadata): PgConfigMetadata {
+  const pool = normalizePool(metadata.pool)
+  const databases = normalizeDatabases(metadata.databases)
   return { pool, databases }
-}
-
-/** Read a config file from disk and parse it. */
-export function loadPgConfigFromFile(path: string): PgDataSourceConfig {
-  const content = readFileSync(path, 'utf8')
-  return loadPgConfigFromYaml(content)
 }

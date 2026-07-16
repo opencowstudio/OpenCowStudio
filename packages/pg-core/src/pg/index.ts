@@ -14,18 +14,17 @@ export type {
   PgColumnMetadata,
 } from './types.ts'
 
-// Configuration (typed YAML loading & URL parsing)
+// Configuration (typed metadata definition & URL parsing)
 export {
   parsePgUrl,
   toConnectionOptions,
-  loadPgConfigFromYaml,
-  loadPgConfigFromFile,
+  definePgConfig,
 } from './config.ts'
 export type {
   PgPoolConfig,
   PgNodeConfig,
   PgDatabaseConfig,
-  PgDataSourceConfig,
+  PgConfigMetadata,
   PgConnectionOptions,
 } from './config.ts'
 

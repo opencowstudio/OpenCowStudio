@@ -1,10 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
 import {
   PgDataSource,
   PgDataSourceManager,
-  loadPgConfigFromFile,
+  definePgConfig,
   type PoolFactory,
   type PoolLike,
 } from '../../../src/pg'
@@ -12,10 +10,38 @@ import type {
   PgConnectionOptions,
 } from '../../../src/pg'
 
-// Load the shared example datasource config (packages/pg-core/pg.config.example.yaml)
-// so the tests exercise the same shape the app uses in development.
-const CONFIG_PATH = join(dirname(fileURLToPath(import.meta.url)), '../../../pg.config.example.yaml')
-const CONFIG = loadPgConfigFromFile(CONFIG_PATH)
+// Build the datasource config metadata in code (mirrors
+// packages/pg-core/pg.config.example.yaml) so the tests exercise the same
+// shape the app uses in development.
+const CONFIG = definePgConfig({
+  pool: {
+    max: 18,
+    min: 18,
+    idleTimeoutMillis: 600000,
+    maxLifetimeSeconds: 1800,
+  },
+  databases: {
+    default: {
+      master: {
+        url: 'postgresql://localhost:5432/opencowstudio_dev',
+        username: 'postgres',
+        password: 'postgres',
+      },
+      slaves: [
+        {
+          url: 'postgresql://localhost:5432/opencowstudio_dev',
+          username: 'postgres',
+          password: 'postgres',
+        },
+        {
+          url: 'postgresql://localhost:5432/opencowstudio_dev',
+          username: 'postgres',
+          password: 'postgres',
+        },
+      ],
+    },
+  },
+})
 
 const POOL = CONFIG.pool
 const DEFAULT_DB = CONFIG.databases.default!

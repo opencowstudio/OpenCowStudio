@@ -1,6 +1,5 @@
-import { defineNuxtModule, addServerPlugin, createResolver } from '@nuxt/kit'
-import { resolve } from 'node:path'
-import { loadPgConfigFromFile } from '@opencowstudio/pg-core'
+import { defineNuxtModule } from '@nuxt/kit'
+import { definePgConfig, type PgConfigMetadata } from '@opencowstudio/pg-core'
 
 export { generateGuid, generateId } from '@opencowstudio/pg-core'
 
@@ -11,13 +10,13 @@ export interface ModuleOptions {
    */
   enabled?: boolean
   /**
-   * Path (relative to the project root) of the PostgreSQL datasource config
-   * file. Defaults to "pg.config.yaml" at the project root. When set, the
-   * config is loaded at build time and injected into the server-only runtime
-   * config so connection pools can be created by the Nitro plugin.
-   * @default "pg.config.yaml"
+   * PostgreSQL datasource configuration metadata defined in code (see
+   * `definePgConfig` from `@opencowstudio/pg-core`). When provided, it is
+   * validated and injected into the server-only runtime config so the
+   * application can build connection pools at runtime. Credentials never reach
+   * the client bundle.
    */
-  pgConfigPath?: string
+  pgConfig?: PgConfigMetadata
 }
 
 export default defineNuxtModule<ModuleOptions>({
@@ -30,22 +29,16 @@ export default defineNuxtModule<ModuleOptions>({
   },
   defaults: {
     enabled: true,
-    pgConfigPath: 'pg.config.yaml',
   },
   async setup(options, nuxt) {
     if (!options.enabled) {
       return
     }
 
-    // Load the datasource config (if a path is provided) and expose it to the
-    // server runtime only — credentials must never reach the client bundle.
-    if (options.pgConfigPath) {
-      const configPath = resolve(nuxt.options.rootDir, options.pgConfigPath)
-      const pgConfig = loadPgConfigFromFile(configPath)
-      nuxt.options.runtimeConfig.pg = pgConfig as unknown as Record<string, unknown>
+    // Validate and expose the datasource config to the server runtime only —
+    // credentials must never reach the client bundle.
+    if (options.pgConfig) {
+      nuxt.options.runtimeConfig.pg = definePgConfig(options.pgConfig) as unknown as Record<string, unknown>
     }
-
-    const { resolve: resolveRuntime } = createResolver(import.meta.url)
-    addServerPlugin(resolveRuntime('./runtime/pg-plugin.ts'))
   },
 })

@@ -9,7 +9,9 @@ This package contains everything that does **not** depend on Nuxt:
 - Typed datasource configuration metadata (`PgConfigMetadata`).
 - Connection-pool routing & multi-database registry
   (`PgDataSource`, `PgDataSourceManager`).
-- Id generation utilities (`generateGuid`, `generateId`).
+
+Id-generation utilities (`generateGuid`, `generateId`) are re-exported from
+[`@opencowstudio/core`](../core) so they can be shared across packages.
 
 ## Usage
 

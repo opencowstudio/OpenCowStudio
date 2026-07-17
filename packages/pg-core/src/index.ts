@@ -5,4 +5,3 @@
 // has no dependency on Nuxt so it can be used in any Node.js environment.
 
 export * from './pg'
-export { generateGuid, generateId } from './utils/id'

@@ -10,8 +10,7 @@ import type {
   PgNodeMetadata,
 } from '../../src/pg'
 
-// Build the datasource config metadata in code (mirrors
-// packages/pg-core/pg.config.example.yaml) so the tests exercise the same
+// Build the datasource config metadata in code so the tests exercise the same
 // shape the app uses in development.
 const CONFIG: PgConfigMetadata = {
   pool: {

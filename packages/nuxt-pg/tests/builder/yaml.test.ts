@@ -12,21 +12,22 @@ describe('parsePgConfigYaml', () => {
 
   it('parses read-replica (slave) nodes', () => {
     const yaml = `
-pool:
-  max: 1
-  min: 1
-  idleTimeoutMillis: 1
-  maxLifetimeSeconds: 1
-databases:
-  default:
-    master:
-      url: postgresql://localhost:5432/db
-      username: u
-      password: p
-    slaves:
-      - url: postgresql://localhost:5432/replica
-        username: r
-        password: r
+pg:
+  pool:
+    max: 1
+    min: 1
+    idleTimeoutMillis: 1
+    maxLifetimeSeconds: 1
+  databases:
+    default:
+      master:
+        url: postgresql://localhost:5432/db
+        username: u
+        password: p
+      slaves:
+        - url: postgresql://localhost:5432/replica
+          username: r
+          password: r
 `
     const cfg = parsePgConfigYaml(yaml)
     expect(cfg.databases.default.slaves).toHaveLength(1)

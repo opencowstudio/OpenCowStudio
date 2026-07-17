@@ -22,8 +22,8 @@ function makeTempDir(): string {
 describe('loadPgConfigMetadata', () => {
   it('reads and parses an existing config file', () => {
     const root = makeTempDir()
-    writeFileSync(join(root, 'pg.config.yaml'), samplePgConfigYaml)
-    const cfg = loadPgConfigMetadata(root, 'pg.config.yaml')
+    writeFileSync(join(root, 'app.config.yaml'), samplePgConfigYaml)
+    const cfg = loadPgConfigMetadata(root, 'app.config.yaml')
     expect(cfg).not.toBeNull()
     expect(cfg!.pool.max).toBe(18)
     expect(cfg!.databases.default.master.username).toBe('postgres')
@@ -31,6 +31,6 @@ describe('loadPgConfigMetadata', () => {
 
   it('returns null when no config file is present', () => {
     const root = makeTempDir()
-    expect(loadPgConfigMetadata(root, 'pg.config.yaml')).toBeNull()
+    expect(loadPgConfigMetadata(root, 'app.config.yaml')).toBeNull()
   })
 })

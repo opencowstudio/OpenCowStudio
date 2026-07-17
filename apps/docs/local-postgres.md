@@ -4,18 +4,7 @@ This guide explains how to spin up a local **PostgreSQL 18** instance with Docke
 for OpenCowStudio development.
 
 The app does **not** read database credentials from environment variables.
-Connection settings live in a single YAML file, `pg.config.yaml` (see
-`packages/nuxt-pg/src/index.ts`, which loads it into the server-only
-`runtimeConfig.pg`). The snippets below use the project's defaults so the
-instance works out of the box:
-
-| Setting            | Default value        |
-| ------------------ | -------------------- |
-| host               | `localhost`          |
-| port               | `5432`               |
-| database           | `opencowstudio_dev`  |
-| username           | `postgres`           |
-| password           | `postgres`           |
+Connection settings live in a single YAML file, `app.config.yaml`. 
 
 ## Prerequisites
 
@@ -95,7 +84,7 @@ List databases to confirm `opencowstudio_dev` exists:
 
 ## Connect the application
 
-Once the instance is running, configure the connection in `pg.config.yaml` at
+Once the instance is running, configure the connection in `app.config.yaml` at
 the project root. The file is git-ignored; create it (or copy from your team's
 template) and point the `master` / `slaves` nodes at the running container:
 
@@ -114,7 +103,7 @@ databases:
     slaves: []
 ```
 
-Start the Nuxt app as usual — the `pg` datasource module loads `pg.config.yaml`
+Start the Nuxt app as usual — the `pg` datasource module loads `app.config.yaml`
 at build time and injects it into the server-only runtime config, so the
 connection is picked up automatically.
 
@@ -149,10 +138,10 @@ docker logs -f opencowstudio-pg
 
 - **Port 5432 already in use** — either stop the local Postgres service
   occupying the port, or map a different host port (e.g. `-p 5433:5432`) and
-  update the `url` in `pg.config.yaml` accordingly.
+  update the `url` in `app.config.yaml` accordingly.
 - **Connection refused** — confirm the container is running (`docker ps`) and
-  that the host/port in `pg.config.yaml` match the published port.
+  that the host/port in `app.config.yaml` match the published port.
 - **Password authentication failed** — the `POSTGRES_PASSWORD` you set in the
-  container must equal the `password` in `pg.config.yaml`.
+  container must equal the `password` in `app.config.yaml`.
 - **Data not persisting** — make sure you used a volume or a
   bind mount; without one, all data is lost when the container is removed.

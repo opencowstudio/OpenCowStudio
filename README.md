@@ -26,7 +26,7 @@ pnpm typecheck           # type-check every workspace package
 ```
 
 A local PostgreSQL instance can be started with `docker compose -f docker/postgres/docker-compose.yml up -d`
-(see [`packages/pg-core/pg.config.example.yaml`](./packages/pg-core/pg.config.example.yaml)
+(see [`packages/nuxt-pg/app.config.example.yaml`](./packages/nuxt-pg/app.config.example.yaml)
 and the docs in `apps/docs`).
 
 ## License

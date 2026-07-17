@@ -4,16 +4,7 @@
 OpenCowStudio 的本地开发。
 
 应用**不会**从环境变量中读取数据库凭据。连接配置统一存放在一个 YAML 文件
-`pg.config.yaml` 中（参见 `packages/nuxt-pg/src/index.ts`，该模块会在构建时将其
-载入到仅服务端的 `runtimeConfig.pg`）。下面的示例使用了项目的默认值，开箱即用：
-
-| 配置项             | 默认值               |
-| ------------------ | -------------------- |
-| host               | `localhost`          |
-| port               | `5432`               |
-| database           | `opencowstudio_dev`  |
-| username           | `postgres`           |
-| password           | `postgres`           |
+`app.config.yaml`。
 
 ## 前置条件
 
@@ -92,7 +83,7 @@ psql "postgresql://postgres:postgres@localhost:5432/opencowstudio_dev"
 
 ## 接入应用
 
-实例运行后，在项目根目录的 `pg.config.yaml` 中配置连接。该文件已被
+实例运行后，在项目根目录的 `app.config.yaml` 中配置连接。该文件已被
 git 忽略；请自行创建（或从团队模板复制），并将 `master` / `slaves` 节点指向
 运行中的容器：
 
@@ -111,7 +102,7 @@ databases:
     slaves: []
 ```
 
-像往常一样启动 Nuxt 应用 —— `pg` 数据源模块会在构建时加载 `pg.config.yaml`
+像往常一样启动 Nuxt 应用 —— `pg` 数据源模块会在构建时加载 `app.config.yaml`
 并注入到仅服务端的运行时配置中，连接会被自动读取。
 
 ## 常用操作
@@ -143,10 +134,10 @@ docker logs -f opencowstudio-pg
 ## 故障排查
 
 - **端口 5432 被占用** —— 停止占用该端口的本地 Postgres 服务，或映射一个不同的
-  宿主机端口（例如 `-p 5433:5432`），并相应更新 `pg.config.yaml` 中的 `url`。
-- **连接被拒绝** —— 确认容器正在运行（`docker ps`），且 `pg.config.yaml` 中的
+  宿主机端口（例如 `-p 5433:5432`），并相应更新 `app.config.yaml` 中的 `url`。
+- **连接被拒绝** —— 确认容器正在运行（`docker ps`），且 `app.config.yaml` 中的
   主机/端口与发布的端口一致。
-- **密码认证失败** —— 容器中设置的 `POSTGRES_PASSWORD` 必须与 `pg.config.yaml`
+- **密码认证失败** —— 容器中设置的 `POSTGRES_PASSWORD` 必须与 `app.config.yaml`
   中的 `password` 一致。
 - **数据未持久化** —— 确保使用了数据卷或绑定挂载；否则在移除容器时所有数据都会
   丢失。

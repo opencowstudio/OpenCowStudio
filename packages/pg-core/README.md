@@ -47,8 +47,3 @@ const manager = new PgDataSourceManager(config)
 
 For Nuxt integration, use [`@opencowstudio/nuxt-pg`](../nuxt-pg) instead of wiring
 this package up manually.
-
-## Config example
-
-See [`pg.config.example.yaml`](./pg.config.example.yaml) for the supported
-datasource shape (defined in code as `PgConfigMetadata`).

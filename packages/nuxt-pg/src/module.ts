@@ -19,7 +19,7 @@ export interface ModuleOptions {
    * resolved relative to the Nuxt root directory. When the file exists it is
    * parsed into a `PgConfigMetadata` object at build time and baked into a
    * server-only manifest, so credentials never reach the client bundle.
-   * @default 'pg.config.yaml'
+   * @default 'app.config.yaml'
    */
   configFile?: string
 }
@@ -34,7 +34,7 @@ export default defineNuxtModule<ModuleOptions>({
   },
   defaults: {
     enabled: true,
-    configFile: 'pg.config.yaml',
+    configFile: 'app.config.yaml',
   },
   async setup(options, nuxt) {
     if (!options.enabled) {

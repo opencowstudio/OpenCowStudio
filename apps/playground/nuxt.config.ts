@@ -6,7 +6,7 @@ export default defineNuxtConfig({
   modules: [
     ['@opencowstudio/nuxt-pg', {
       // Path resolved relative to the Nuxt root directory.
-      configFile: 'pg.config.yaml',
+      configFile: 'app.config.yaml',
     }],
   ],
 

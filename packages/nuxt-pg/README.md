@@ -6,7 +6,7 @@ application.
 ## What it does
 
 - Reads the PostgreSQL datasource configuration from a YAML file (the
-  `configFile` module option is a file path, defaulting to `pg.config.yaml`).
+  `configFile` module option is a file path, defaulting to `app.config.yaml`).
 - At build time it parses the file into a `PgConfigMetadata` object and bakes it
   into a **server-only** manifest (`pg.manifest.ts`), so credentials never reach
   the client bundle.
@@ -21,14 +21,14 @@ export default defineNuxtConfig({
   modules: [
     ['@opencowstudio/nuxt-pg', {
       // Path resolved relative to the Nuxt root directory.
-      configFile: 'pg.config.yaml',
+      configFile: 'app.config.yaml',
     }],
   ],
 })
 ```
 
 ```yaml
-# pg.config.yaml
+# app.config.yaml
 pool:
   max: 18
   min: 18

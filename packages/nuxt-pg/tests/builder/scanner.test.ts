@@ -21,8 +21,8 @@ function makeTempDir(): string {
 describe('findPgConfigFile', () => {
   it('returns the resolved path when the config file exists', () => {
     const root = makeTempDir()
-    writeFileSync(join(root, 'pg.config.yaml'), 'pool: {}')
-    expect(findPgConfigFile(root, 'pg.config.yaml')).toBe(join(root, 'pg.config.yaml'))
+    writeFileSync(join(root, 'app.config.yaml'), 'pg:\n  pool: {}')
+    expect(findPgConfigFile(root, 'app.config.yaml')).toBe(join(root, 'app.config.yaml'))
   })
 
   it('returns null when the config file is missing', () => {

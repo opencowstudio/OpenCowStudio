@@ -6,8 +6,6 @@ import {
 import { loadPgConfigMetadata } from './builder/metadata'
 import { registerPgManifest } from './builder/manifest'
 
-export { generateGuid, generateId } from '@opencowstudio/pg-core'
-
 const MODULE_NAME = '@opencowstudio/nuxt-pg'
 
 export interface ModuleOptions {

@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import { describe, it, expect } from 'vitest'
+import { consola } from 'consola'
 import {
   PgEntity,
   PgKey,
@@ -8,9 +9,7 @@ import {
   type PgEntityMetadata,
 } from '../../src/pg'
 
-const logger = {
-  info: (...args: unknown[]): void => console.log('[test]', ...args),
-}
+const logger = consola.withTag('test')
 
 // Import every entity module eagerly so the @PgEntity decorators execute and
 // the classes self-register at module-evaluation time.
@@ -35,7 +34,6 @@ describe('Pg decorators — definition & parsing', () => {
   it('should parse User entity metadata', () => {
     const meta = metaFor('users')
     expect(meta).toBeDefined()
-    // eslint-disable-next-line no-console
     logger.info('Parsed User entity metadata:', JSON.stringify(meta, null, 2))
 
     expect(meta.table).toBe('users')
@@ -70,7 +68,6 @@ describe('Pg decorators — definition & parsing', () => {
   it('should derive defaults when options are omitted (Product entity)', () => {
     const meta = metaFor('product')
     expect(meta).toBeDefined()
-    // eslint-disable-next-line no-console
     logger.info('Parsed Product entity metadata:', JSON.stringify(meta, null, 2))
 
     // table defaults to snake_case of the class name (derived by the decorator)

@@ -1,3 +1,4 @@
+import { consola } from 'consola'
 import type {
   PgColumnMetadata,
   PgColumnOptions,
@@ -8,11 +9,8 @@ import type {
   PgKeyOptions,
 } from './types.ts'
 
-// Lightweight console logger so the core stays framework-agnostic (no Nuxt dep).
-const logger = {
-  info: (...args: unknown[]): void => console.log('[pg]', ...args),
-  error: (...args: unknown[]): void => console.error('[pg]', ...args),
-}
+// Tagged logger so the core stays framework-agnostic (no Nuxt dep).
+const logger = consola.withTag('pg')
 
 // ---------------------------------------------------------------------------
 // Symbol keys used to store metadata on the class constructor

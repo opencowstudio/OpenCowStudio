@@ -91,6 +91,9 @@ importers:
       '@opencowstudio/core':
         specifier: workspace:*
         version: link:../core
+      consola:
+        specifier: ^3.4.0
+        version: 3.4.2
       pg:
         specifier: ^8.13.0
         version: 8.22.0

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { parsePgConfigYaml } from '../../../src/builder/yaml'
-import { samplePgConfigYaml, samplePgConfig } from '../../fixtures/pg-config'
+import { parsePgConfigYaml } from '../../src/builder/yaml'
+import { samplePgConfigYaml, samplePgConfig } from '../fixtures/pg-config'
 
 describe('parsePgConfigYaml', () => {
   it('parses a valid config into a PgConfigMetadata object', () => {

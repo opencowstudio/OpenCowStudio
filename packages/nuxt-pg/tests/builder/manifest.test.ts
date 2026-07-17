@@ -7,8 +7,8 @@ vi.mock('@nuxt/kit', () => ({
 }))
 
 import { addTemplate } from '@nuxt/kit'
-import { registerPgManifest, PG_MANIFEST_ALIAS } from '../../../src/builder/manifest'
-import { samplePgConfig } from '../../fixtures/pg-config'
+import { registerPgManifest, PG_MANIFEST_ALIAS } from '../../src/builder/manifest'
+import { samplePgConfig } from '../fixtures/pg-config'
 
 function makeNuxt(): Nuxt {
   return { options: { alias: {} } } as unknown as Nuxt

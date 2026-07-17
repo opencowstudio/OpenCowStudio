@@ -4,11 +4,11 @@ import {
   PgDataSourceManager,
   type PoolFactory,
   type PoolLike,
-} from '../../../src/pg'
+} from '../../src/pg'
 import type {
   PgConfigMetadata,
   PgNodeMetadata,
-} from '../../../src/pg'
+} from '../../src/pg'
 
 // Build the datasource config metadata in code (mirrors
 // packages/pg-core/pg.config.example.yaml) so the tests exercise the same

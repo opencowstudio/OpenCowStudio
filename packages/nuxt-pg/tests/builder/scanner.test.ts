@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest'
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { findPgConfigFile } from '../../../src/builder/scanner'
+import { findPgConfigFile } from '../../src/builder/scanner'
 
 let dir: string | null = null
 

@@ -6,7 +6,7 @@ import {
   PgColumn,
   resolvePgEntities,
   type PgEntityMetadata,
-} from '../../../src/pg'
+} from '../../src/pg'
 
 const logger = {
   info: (...args: unknown[]): void => console.log('[test]', ...args),

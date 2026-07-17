@@ -7,7 +7,7 @@ import type { PgConfigMetadata } from '@opencowstudio/pg-core'
 // mocking those dependencies and invoking the handler it registers.
 
 const bootstrapPath = fileURLToPath(
-  new URL('../../../../src/runtime/plugins/bootstrap', import.meta.url),
+  new URL('../../../src/runtime/plugins/bootstrap', import.meta.url),
 )
 
 function mockRuntime(pgConfig: PgConfigMetadata | null) {

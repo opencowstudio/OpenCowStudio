@@ -92,10 +92,28 @@ package.json           # "type": "module"; exports map; peerDeps on nuxt/@nuxt/k
 tsconfig.json          # Extends the shared base; emits .d.ts
 ```
 
+```
+tests/                 # Vitest (config via vitest.config.ts or root config)
+├── unit/
+│   ├── builder/       # Build-time logic tests — pure, no Nuxt runtime needed
+│   │   ├── scanner.test.ts
+│   │   ├── metadata.test.ts
+│   │   ├── manifest.test.ts
+│   │   └── yaml.test.ts
+│   └── runtime/       # Runtime tests — require a Nuxt/Nitro test environment
+│       └── plugins/
+│           └── bootstrap.test.ts
+└── fixtures/          # Shared fixtures & mocks (sample YAML, fake manifests)
+```
+
 - The module entry (`src/module.ts`) runs at **build time**; it must not import runtime files directly. Runtime files are injected via `addPlugin` / `addServerPlugin` / virtual modules.
 - Keep all build-time concerns (scanning, codegen, config parsing) isolated under `builder/`; the `builder/` directory must never be shipped to the runtime.
 - Keep framework-agnostic logic out of the module; depend on a separate TS library when possible.
 - `runtime/utils/` holds helpers that may be imported by `runtime/plugins/`; anything build-only stays in `builder/`.
+- **Tests mirror the `src/` layout** under `tests/unit/`, split by `builder/` vs `runtime/`:
+  - `tests/unit/builder/` — unit tests for build-time helpers. These are pure (filesystem / parsing / codegen) and run fast without booting Nuxt; prefer plain Vitest.
+  - `tests/unit/runtime/` — tests that exercise runtime files (`plugins/`, `utils/`). These need a Nuxt/Nitro context, so use `@nuxt/test-utils` (`setup`/`setupNode` / `setupServer`) to mount the module and assert on the injected plugin or virtual module.
+  - `tests/fixtures/` holds shared sample YAML configs and fake manifests reused across both layers. Test files are excluded from the published/built output.
 
 ### Generic TypeScript Library
 

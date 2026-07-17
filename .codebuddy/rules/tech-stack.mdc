@@ -76,15 +76,26 @@ nuxt.config.ts        # Nuxt configuration entry
 
 ```
 src/
-├── index.ts          # defineNuxtModule entry (setup hook)
-├── runtime/          # Files shipped to the Nuxt/Nitro runtime
-│   └── *.ts          # plugins / composables used at runtime
-└── utils/            # Build-time helpers (fs scans, codegen, config)
-package.json          # "type": "module"; exports map; peerDeps on nuxt/@nuxt/kit
+├── module.ts          # defineNuxtModule entry (Builder / setup hook)
+│
+├── builder/           # Build-time logic (runs only during `nuxt prepare`/`build`)
+│   ├── scanner.ts     # Scan the filesystem / source tree for targets
+│   ├── metadata.ts    # Collect & normalize discovered metadata
+│   ├── manifest.ts    # Assemble the generated manifest (virtual module payload)
+│   └── yaml.ts        # Parse / serialize YAML config (build-time only)
+│
+└── runtime/           # Files shipped to the Nuxt/Nitro runtime
+    ├── plugins/       # Auto-registered Nuxt plugins (client + server)
+    │   └── bootstrap.ts
+    └── utils/         # Runtime helpers (safe to import from plugins)
+package.json           # "type": "module"; exports map; peerDeps on nuxt/@nuxt/kit
+tsconfig.json          # Extends the shared base; emits .d.ts
 ```
 
-- The module entry (`src/index.ts`) runs at **build time**; it must not import runtime files directly. Runtime files are injected via `addPlugin` / `addServerPlugin` / virtual modules.
+- The module entry (`src/module.ts`) runs at **build time**; it must not import runtime files directly. Runtime files are injected via `addPlugin` / `addServerPlugin` / virtual modules.
+- Keep all build-time concerns (scanning, codegen, config parsing) isolated under `builder/`; the `builder/` directory must never be shipped to the runtime.
 - Keep framework-agnostic logic out of the module; depend on a separate TS library when possible.
+- `runtime/utils/` holds helpers that may be imported by `runtime/plugins/`; anything build-only stays in `builder/`.
 
 ### Generic TypeScript Library
 

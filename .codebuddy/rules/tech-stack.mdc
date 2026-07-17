@@ -41,6 +41,11 @@ Guidance for projects built with **Nuxt 4 + Vue 3 + TypeScript + Vite**. This is
 - Use `~` / `@` aliases provided by Nuxt instead of relative `../../../` imports.
 - Keep build-time-only deps in `devDependencies`.
 
+### Logging
+- **Nuxt Module builder (`builder/` and `src/module.ts`):** use the logger provided by `@nuxt/kit` (the `logger` passed into `defineNuxtModule` setup, or `useLogger` from `@nuxt/kit`). Do not introduce `consola` here — keep module build-time logging consistent with Nuxt's tooling.
+- **All other scenarios** (apps, runtime plugins/utils, generic TS libraries, tests, scripts): use [`consola`](https://github.com/unjs/consola). Create a tagged instance for context, e.g. `const logger = consola.withTag('pg')`, instead of wrapping `console.log`/`console.error` directly.
+- Never use raw `console.log`/`console.error` for application or library logging; prefer the appropriate logger above.
+
 ## Directory Conventions
 
 Different kinds of projects follow different layouts. Pick the one that matches the package you are working in.

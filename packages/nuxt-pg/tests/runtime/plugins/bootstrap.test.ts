@@ -19,13 +19,16 @@ function mockRuntime(pgConfig: PgConfigMetadata | null) {
     this.dbNames = Object.keys(config.databases)
   })
 
+  // The manifest carries the `pg` namespace as a formatted JSON string.
+  const pgConfigJson = pgConfig ? JSON.stringify(pgConfig, null, 2) : null
+
   vi.doMock('nitropack/runtime', () => ({
     defineNitroPlugin: (handler: () => void) => handler,
   }))
   vi.doMock('@opencowstudio/pg-core', () => ({
     PgDataSourceManager: PgDataSourceManagerSpy,
   }))
-  vi.doMock('#pg-manifest', () => ({ pgConfig }))
+  vi.doMock('#pg-manifest', () => ({ pgConfigJson }))
 
   return PgDataSourceManagerSpy
 }
@@ -62,6 +65,7 @@ describe('bootstrap nitro plugin', () => {
     const { PgDataSourceManager } = await import('@opencowstudio/pg-core')
     expect(PgDataSourceManager).toBe(spy)
     expect(spy).toHaveBeenCalledTimes(1)
+    // The plugin parses the manifest's JSON string back into the metadata.
     expect(spy).toHaveBeenCalledWith(cfg)
   })
 })

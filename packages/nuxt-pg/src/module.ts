@@ -3,7 +3,6 @@ import {
   createResolver,
   defineNuxtModule,
 } from '@nuxt/kit'
-import { loadPgConfigMetadata } from './builder/metadata'
 import { registerPgManifest } from './builder/manifest'
 
 const MODULE_NAME = '@opencowstudio/nuxt-pg'
@@ -16,8 +15,8 @@ export interface ModuleOptions {
   enabled?: boolean
   /**
    * Path to the PostgreSQL datasource configuration file (YAML). The path is
-   * resolved relative to the Nuxt root directory. When the file exists it is
-   * parsed into a `PgConfigMetadata` object at build time and baked into a
+   * resolved relative to the Nuxt root directory. When the file exists its `pg`
+   * namespace is serialized to a JSON string at build time and baked into a
    * server-only manifest, so credentials never reach the client bundle.
    * @default 'app.config.yaml'
    */
@@ -43,11 +42,9 @@ export default defineNuxtModule<ModuleOptions>({
 
     const resolver = createResolver(import.meta.url)
 
-    // Locate, read and parse the pg config file at build time.
-    const pgConfig = loadPgConfigMetadata(nuxt.options.rootDir, options.configFile!)
-
-    // Bake the parsed configuration into a server-only manifest.
-    registerPgManifest(nuxt, pgConfig)
+    // Locate, read and serialize the pg config file into a server-only manifest
+    // at build time. The runtime parses the JSON string back into metadata.
+    registerPgManifest(nuxt, options.configFile!)
 
     // Register the Nitro plugin that instantiates the datasource manager.
     addServerPlugin(resolver.resolve('./runtime/plugins/bootstrap'))

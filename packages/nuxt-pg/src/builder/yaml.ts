@@ -1,13 +1,13 @@
 import { parse as parseYaml } from 'yaml'
-import type { PgConfigMetadata } from '@opencowstudio/pg-core'
 
 /**
- * Parse a raw YAML string into a typed PostgreSQL configuration metadata object.
- * The datasource config lives under the top-level `pg` namespace.
+ * Extract the `pg` namespace from a raw YAML string as a generic, untyped JSON
+ * object. The runtime re-parses this from the manifest's JSON string and casts
+ * it to `PgConfigMetadata`, so the builder intentionally avoids the typed shape.
  *
  * Build-time only — this helper must never be imported from the runtime.
  */
-export function parsePgConfigYaml(raw: string): PgConfigMetadata | null {
-  const parsed = parseYaml(raw) as { pg?: PgConfigMetadata }
+export function readPgConfigNamespace(raw: string): Record<string, unknown> | null {
+  const parsed = parseYaml(raw) as { pg?: Record<string, unknown> }
   return parsed?.pg ?? null
 }

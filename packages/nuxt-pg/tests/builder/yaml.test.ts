@@ -1,13 +1,18 @@
 import { describe, it, expect } from 'vitest'
-import { parsePgConfigYaml } from '../../src/builder/yaml'
-import { samplePgConfigYaml, samplePgConfig } from '../fixtures/pg-config'
+import { readPgConfigNamespace } from '../../src/builder/yaml'
+import { samplePgConfigYaml } from '../fixtures/pg-config'
 
-describe('parsePgConfigYaml', () => {
-  it('parses a valid config into a PgConfigMetadata object', () => {
-    const cfg = parsePgConfigYaml(samplePgConfigYaml)
-    expect(cfg.pool.max).toBe(samplePgConfig.pool.max)
-    expect(cfg.databases.default.master.url).toBe(samplePgConfig.databases.default.master.url)
-    expect(cfg.databases.default.slaves).toEqual([])
+describe('readPgConfigNamespace', () => {
+  it('extracts the pg namespace as a generic JSON object', () => {
+    const ns = readPgConfigNamespace(samplePgConfigYaml)
+    expect(ns).not.toBeNull()
+    expect((ns!.pool as { max: number }).max).toBe(18)
+    const databases = ns!.databases as Record<string, unknown>
+    expect(databases.default).toBeDefined()
+  })
+
+  it('returns null when there is no pg namespace', () => {
+    expect(readPgConfigNamespace('foo: bar')).toBeNull()
   })
 
   it('parses read-replica (slave) nodes', () => {
@@ -29,8 +34,10 @@ pg:
           username: r
           password: r
 `
-    const cfg = parsePgConfigYaml(yaml)
-    expect(cfg.databases.default.slaves).toHaveLength(1)
-    expect(cfg.databases.default.slaves[0].username).toBe('r')
+    const ns = readPgConfigNamespace(yaml)
+    const databases = ns!.databases as Record<string, { slaves: unknown[] }>
+    expect(databases.default.slaves).toHaveLength(1)
+    const slaves = databases.default.slaves[0] as { username: string }
+    expect(slaves.username).toBe('r')
   })
 })

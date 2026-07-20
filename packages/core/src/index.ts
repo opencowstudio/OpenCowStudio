@@ -6,3 +6,5 @@
 // database driver so it can be consumed in any Node.js environment.
 
 export { generateGuid, generateId } from './utils/id'
+export { Placeholder, resolvePlaceholders } from './utils/placeholder'
+export type { PlaceholderOptions } from './utils/placeholder'

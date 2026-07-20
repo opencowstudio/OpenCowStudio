@@ -16,6 +16,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@opencowstudio/core": "workspace:*",
     "@opencowstudio/pg-core": "workspace:*",
     "consola": "^3.4.2",
     "yaml": "^2.9.0"

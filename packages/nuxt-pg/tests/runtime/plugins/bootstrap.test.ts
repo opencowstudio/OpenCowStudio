@@ -68,4 +68,74 @@ describe('bootstrap nitro plugin', () => {
     // The plugin parses the manifest's JSON string back into the metadata.
     expect(spy).toHaveBeenCalledWith(cfg)
   })
+
+  it('resolves ${VAR:default} placeholders from the environment before parsing', async () => {
+    const previous = process.env.PG_TEST_PASSWORD
+    process.env.PG_TEST_PASSWORD = 'resolved-secret'
+    try {
+      const cfg: PgConfigMetadata = {
+        pool: { max: 1, min: 1, idleTimeoutMillis: 1, maxLifetimeSeconds: 1 },
+        databases: {
+          default: {
+            master: {
+              url: 'postgresql://localhost:5432/db',
+              username: 'u',
+              password: '${PG_TEST_PASSWORD:fallback}',
+            },
+            slaves: [],
+          },
+        },
+      }
+      vi.resetModules()
+      const spy = mockRuntime(cfg)
+      const mod = await import(bootstrapPath)
+      const handler = mod.default as () => void
+      handler()
+
+      expect(spy).toHaveBeenCalledTimes(1)
+      const resolved = spy.mock.calls[0]![0] as PgConfigMetadata
+      expect(resolved.databases.default.master.password).toBe('resolved-secret')
+    } finally {
+      if (previous === undefined) {
+        delete process.env.PG_TEST_PASSWORD
+      } else {
+        process.env.PG_TEST_PASSWORD = previous
+      }
+    }
+  })
+
+  it('falls back to the default value when the placeholder variable is unset', async () => {
+    const previous = process.env.PG_TEST_PASSWORD
+    delete process.env.PG_TEST_PASSWORD
+    try {
+      const cfg: PgConfigMetadata = {
+        pool: { max: 1, min: 1, idleTimeoutMillis: 1, maxLifetimeSeconds: 1 },
+        databases: {
+          default: {
+            master: {
+              url: 'postgresql://localhost:5432/db',
+              username: 'u',
+              password: '${PG_TEST_PASSWORD:fallback-secret}',
+            },
+            slaves: [],
+          },
+        },
+      }
+      vi.resetModules()
+      const spy = mockRuntime(cfg)
+      const mod = await import(bootstrapPath)
+      const handler = mod.default as () => void
+      handler()
+
+      expect(spy).toHaveBeenCalledTimes(1)
+      const resolved = spy.mock.calls[0]![0] as PgConfigMetadata
+      expect(resolved.databases.default.master.password).toBe('fallback-secret')
+    } finally {
+      if (previous === undefined) {
+        delete process.env.PG_TEST_PASSWORD
+      } else {
+        process.env.PG_TEST_PASSWORD = previous
+      }
+    }
+  })
 })

@@ -57,6 +57,9 @@ importers:
 
   packages/nuxt-pg:
     dependencies:
+      '@opencowstudio/core':
+        specifier: workspace:*
+        version: link:../core
       '@opencowstudio/pg-core':
         specifier: workspace:*
         version: link:../pg-core

@@ -11,9 +11,18 @@ application.
   serializes it to a formatted JSON string, logs it, and bakes that string into a
   **server-only** manifest (`pg.manifest.ts`), so credentials never reach the
   client bundle.
-- At runtime a Nitro plugin parses the manifest's JSON string back into a
+- At runtime a Nitro plugin parses the manifest's JSON string into a
   `PgConfigMetadata` object and, when a configuration is present, instantiates a
   `PgDataSourceManager` from `@opencowstudio/pg-core`.
+
+  The manifest is plain JSON, so values are not guaranteed to match the typed
+  metadata — for example a pool field may be authored as the YAML string
+  `"18"`. The runtime therefore parses the JSON with a fault-tolerant converter
+  (`runtime/utils/pgConfig.ts`) that coerces each value to its target type:
+  numeric strings like `"18"` become the number `18`, and unquoted numeric
+  credentials like `password: 1234` become strings. When a value cannot be
+  coerced, a detailed error (including the offending config path, the expected
+  type, and the received value) is logged and the plugin fails loudly.
 
 ## Usage
 

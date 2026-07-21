@@ -2,7 +2,7 @@
 // PostgreSQL — barrel exports
 // ---------------------------------------------------------------------------
 
-export { PgEntity, PgKey, PgColumn, resolvePgEntities } from './decorators'
+export { PgEntity, PgKey, PgColumn, resolvePgEntities, buildPgEntityRaw, resolvePgEntityRaw } from './decorators'
 export type {
   PgEntityOptions,
   PgKeyOptions,
@@ -12,6 +12,10 @@ export type {
   PgEntityMetadata,
   PgKeyMetadata,
   PgColumnMetadata,
+  BooleanLike,
+  PgKeyRaw,
+  PgColumnRaw,
+  PgEntityRaw,
 } from './types.ts'
 
 export type {

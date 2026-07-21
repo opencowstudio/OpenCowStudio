@@ -6,7 +6,10 @@ import {
   PgKey,
   PgColumn,
   resolvePgEntities,
+  buildPgEntityRaw,
+  resolvePgEntityRaw,
   type PgEntityMetadata,
+  type PgEntityRaw,
 } from '../../src/pg'
 
 const logger = consola.withTag('test')
@@ -42,8 +45,7 @@ describe('Pg decorators — definition & parsing', () => {
     expect(meta.createTableAuto).toBe(true)
     expect(meta.indexes).toEqual([{ columns: ['email'], unique: true }])
 
-    expect(meta.keys).toHaveLength(1)
-    expect(meta.keys[0]).toMatchObject({
+    expect(meta.key).toMatchObject({
       propertyKey: 'id',
       column: 'id',
       generated: false,
@@ -74,7 +76,7 @@ describe('Pg decorators — definition & parsing', () => {
     expect(meta.table).toBe('product')
     expect(meta.createTableAuto).toBe(true)
 
-    expect(meta.keys[0]).toMatchObject({
+    expect(meta.key).toMatchObject({
       propertyKey: 'productId',
       column: 'product_id',
       generated: true,
@@ -119,7 +121,7 @@ describe('Pg decorators — definition & parsing', () => {
     const meta = metaFor('snake_case')
     expect(meta).toBeDefined()
 
-    expect(meta.keys[0]).toMatchObject({
+    expect(meta.key).toMatchObject({
       propertyKey: 'userId',
       column: 'user_id',
     })
@@ -160,89 +162,97 @@ describe('Pg decorators — definition & parsing', () => {
 describe('Pg decorators — name validation', () => {
   const VALID_RE = /^[a-zA-Z0-9_]+$/
 
-  it('should throw when dbName contains invalid characters', () => {
-    expect(() => {
-      @PgEntity({ dbName: 'bad-db' })
-      class BadDb {}
+  it('should throw when dbName contains invalid characters (at resolution time)', () => {
+    @PgEntity({ dbName: 'bad-db' })
+    class BadDb {
+      @PgKey()
+      id!: string
+    }
 
-      new BadDb()
-    }).toThrow(/Invalid dbName/)
+    expect(() => resolvePgEntities([{ BadDb } as Record<string, unknown>])).toThrow(/Invalid dbName/)
   })
 
-  it('should throw when schema contains invalid characters', () => {
-    expect(() => {
-      @PgEntity({ schema: 'bad schema' })
-      class BadSchema {}
+  it('should throw when schema contains invalid characters (at resolution time)', () => {
+    @PgEntity({ schema: 'bad schema' })
+    class BadSchema {
+      @PgKey()
+      id!: string
+    }
 
-      new BadSchema()
-    }).toThrow(/Invalid schema/)
+    expect(() => resolvePgEntities([{ BadSchema } as Record<string, unknown>])).toThrow(/Invalid schema/)
   })
 
-  it('should throw when table contains invalid characters', () => {
-    expect(() => {
-      @PgEntity({ table: 'bad-table!' })
-      class BadTable {}
+  it('should throw when table contains invalid characters (at resolution time)', () => {
+    @PgEntity({ table: 'bad-table!' })
+    class BadTable {
+      @PgKey()
+      id!: string
+    }
 
-      new BadTable()
-    }).toThrow(/Invalid table/)
+    expect(() => resolvePgEntities([{ BadTable } as Record<string, unknown>])).toThrow(/Invalid table/)
   })
 
-  it('should accept valid dbName, schema and table without throwing', () => {
-    expect(() => {
-      @PgEntity({ dbName: 'my_db_1', schema: 'app_schema', table: 'my_table' })
-      class ValidEntity {}
+  it('should accept valid dbName, schema and table without throwing (at resolution time)', () => {
+    @PgEntity({ dbName: 'my_db_1', schema: 'app_schema', table: 'my_table' })
+    class ValidEntity {
+      @PgKey()
+      id!: string
+    }
 
-      new ValidEntity()
-    }).not.toThrow()
+    expect(() => resolvePgEntities([{ ValidEntity } as Record<string, unknown>])).not.toThrow()
   })
 
-  it('should throw when a PgColumn column name contains invalid characters', () => {
-    expect(() => {
-      class BadColumn {
-        @PgColumn({ column: 'bad-column', columnType: 'TEXT' })
-        name!: string
-      }
+  it('should throw when a PgColumn column name contains invalid characters (at resolution time)', () => {
+    @PgEntity()
+    class BadColumn {
+      @PgKey()
+      id!: string
 
-      new BadColumn()
-    }).toThrow(/Invalid column/)
+      @PgColumn({ column: 'bad-column', columnType: 'TEXT' })
+      name!: string
+    }
+
+    expect(() => resolvePgEntities([{ BadColumn } as Record<string, unknown>])).toThrow(/Invalid column/)
   })
 
-  it('should throw when a PgKey column name contains invalid characters', () => {
-    expect(() => {
-      class BadKey {
-        @PgKey({ column: 'bad key' })
-        id!: string
-      }
+  it('should throw when a PgKey column name contains invalid characters (at resolution time)', () => {
+    @PgEntity()
+    class BadKey {
+      @PgKey({ column: 'bad key' })
+      id!: string
+    }
 
-      new BadKey()
-    }).toThrow(/Invalid column/)
+    expect(() => resolvePgEntities([{ BadKey } as Record<string, unknown>])).toThrow(/Invalid column/)
   })
 
-  it('should throw when an index column name contains invalid characters', () => {
-    expect(() => {
-      @PgEntity({ indexes: [{ columns: ['bad-column'], unique: true }] })
-      class BadIndex {}
+  it('should throw when an index column name contains invalid characters (at resolution time)', () => {
+    @PgEntity({ indexes: [{ columns: ['bad-column'], unique: true }] })
+    class BadIndex {
+      @PgKey()
+      id!: string
+    }
 
-      new BadIndex()
-    }).toThrow(/Invalid index column/)
+    expect(() => resolvePgEntities([{ BadIndex } as Record<string, unknown>])).toThrow(/Invalid index column/)
   })
 
-  it('should throw when an index references an invalid column name per the identifier regex', () => {
-    expect(() => {
-      @PgEntity({ indexes: [{ columns: ['valid_col', 'not valid'] }] })
-      class BadIndexCol {}
+  it('should throw when an index references an invalid column name per the identifier regex (at resolution time)', () => {
+    @PgEntity({ indexes: [{ columns: ['valid_col', 'not valid'] }] })
+    class BadIndexCol {
+      @PgKey()
+      id!: string
+    }
 
-      new BadIndexCol()
-    }).toThrow(/Invalid index column/)
+    expect(() => resolvePgEntities([{ BadIndexCol } as Record<string, unknown>])).toThrow(/Invalid index column/)
   })
 
-  it('should accept a valid index column name without throwing', () => {
-    expect(() => {
-      @PgEntity({ indexes: [{ columns: ['email'], unique: true }] })
-      class ValidIndex {}
+  it('should accept a valid index column name without throwing (at resolution time)', () => {
+    @PgEntity({ indexes: [{ columns: ['email'], unique: true }] })
+    class ValidIndex {
+      @PgKey()
+      id!: string
+    }
 
-      new ValidIndex()
-    }).not.toThrow()
+    expect(() => resolvePgEntities([{ ValidIndex } as Record<string, unknown>])).not.toThrow()
   })
 
   it('should ensure the identifier regex itself only matches [a-zA-Z0-9_]+', () => {
@@ -303,6 +313,9 @@ describe('Pg decorators — PgColumn columnType requirement', () => {
   it('should store the declared columnType in metadata', () => {
     @PgEntity()
     class Typed {
+      @PgKey()
+      id!: string
+
       @PgColumn({ columnType: 'JSON_OBJECT' })
       data!: { a: number }
 
@@ -326,26 +339,30 @@ describe('Pg decorators — PgColumn columnType requirement', () => {
     })
   })
 
-  it('should throw when columnType is not declared', () => {
-    expect(() => {
-      class MissingType {
-        @PgColumn()
-        name!: string
-      }
+  it('should throw when columnType is not declared (at resolution time)', () => {
+    @PgEntity()
+    class MissingType {
+      @PgKey()
+      id!: string
 
-      new MissingType()
-    }).toThrow(/columnType/)
+      @PgColumn()
+      name!: string
+    }
+
+    expect(() => resolvePgEntities([{ MissingType } as Record<string, unknown>])).toThrow(/columnType/)
   })
 
-  it('should throw when columnType is an invalid value', () => {
-    expect(() => {
-      class BadType {
-        @PgColumn({ columnType: 'INVALID' as never })
-        name!: string
-      }
+  it('should throw when columnType is an invalid value (at resolution time)', () => {
+    @PgEntity()
+    class BadType {
+      @PgKey()
+      id!: string
 
-      new BadType()
-    }).toThrow(/columnType/)
+      @PgColumn({ columnType: 'INVALID' as never })
+      name!: string
+    }
+
+    expect(() => resolvePgEntities([{ BadType } as Record<string, unknown>])).toThrow(/columnType/)
   })
 })
 
@@ -355,8 +372,7 @@ describe('Pg entity resolution & lookup', () => {
     expect(meta).toBeDefined()
     expect(meta.table).toBe('members')
     expect(meta.schema).toBe('public')
-    expect(meta.keys).toHaveLength(1)
-    expect(meta.keys[0]).toMatchObject({ propertyKey: 'id', column: 'id' })
+    expect(meta.key).toMatchObject({ propertyKey: 'id', column: 'id' })
     expect(meta.columns).toContainEqual({
       propertyKey: 'name',
       column: 'name',
@@ -388,5 +404,128 @@ describe('Pg entity resolution & lookup', () => {
     const second = resolvePgEntities(Object.values(entityModules) as Record<string, unknown>[])
     expect(second).not.toBe(first)
     expect(second.map(m => m.table).sort()).toEqual(first.map(m => m.table).sort())
+  })
+})
+
+describe('Pg decorators — raw config & two-stage resolution', () => {
+  // A helper that constructs the entity (firing field decorators) and then
+  // reads the unmodified raw config via buildPgEntityRaw.
+  function rawFor(ctor: Function): PgEntityRaw {
+    new (ctor as new () => unknown)()
+    const raw = buildPgEntityRaw(ctor)
+    if (!raw) throw new Error(`No raw config for ${ctor.name}`)
+    return raw
+  }
+
+  it('buildPgEntityRaw should return the decorator options verbatim (no defaults, no conversion)', () => {
+    @PgEntity({ dbName: 'my_db', schema: 'app', table: 'my_tbl', createTableAuto: 'false' as never })
+    class RawEntity {
+      @PgKey({ generated: 'false' as never })
+      id!: string
+
+      @PgColumn({ columnType: 'TEXT', comment: 'a comment' })
+      name!: string
+    }
+
+    const raw = rawFor(RawEntity)
+    expect(raw.className).toBe('RawEntity')
+    // string booleans are preserved exactly as supplied
+    expect(raw.options.createTableAuto).toBe('false')
+    expect(raw.options.dbName).toBe('my_db')
+    expect(raw.options.schema).toBe('app')
+    expect(raw.options.table).toBe('my_tbl')
+    expect(raw.key).toMatchObject({ propertyKey: 'id', options: { generated: 'false' } })
+    expect(raw.columns).toHaveLength(1)
+    expect(raw.columns[0]).toMatchObject({
+      propertyKey: 'name',
+      options: { columnType: 'TEXT', comment: 'a comment' },
+    })
+  })
+
+  it('resolvePgEntityRaw should normalise BooleanLike strings to real booleans', () => {
+    @PgEntity({ createTableAuto: 'false' as never, addColumnAuto: '0' as never, createIndexAuto: 'true' as never })
+    class BoolEntity {
+      @PgKey({ generated: 'false' as never })
+      id!: string
+
+      @PgColumn({ columnType: 'TEXT' })
+      name!: string
+    }
+
+    const raw = rawFor(BoolEntity)
+    const meta = resolvePgEntityRaw(raw)
+    expect(meta.createTableAuto).toBe(false)
+    expect(meta.addColumnAuto).toBe(false)
+    expect(meta.createIndexAuto).toBe(true)
+    expect(meta.key!.generated).toBe(false)
+  })
+
+  it('resolvePgEntityRaw should apply defaults for omitted boolean options', () => {
+    @PgEntity()
+    class DefaultBool {
+      @PgKey()
+      id!: string
+
+      @PgColumn({ columnType: 'TEXT' })
+      name!: string
+    }
+
+    const raw = rawFor(DefaultBool)
+    const meta = resolvePgEntityRaw(raw)
+    expect(meta.createTableAuto).toBe(true)
+    expect(meta.addColumnAuto).toBe(true)
+    expect(meta.createIndexAuto).toBe(true)
+    expect(meta.key!.generated).toBe(true)
+  })
+
+  it('resolvePgEntityRaw should normalise index.unique BooleanLike strings', () => {
+    @PgEntity({ indexes: [{ columns: ['email'], unique: 'true' as never }] })
+    class Indexed {
+      @PgKey()
+      id!: string
+    }
+
+    const raw = rawFor(Indexed)
+    const meta = resolvePgEntityRaw(raw)
+    expect(meta.indexes).toEqual([{ columns: ['email'], unique: true }])
+  })
+
+  it('resolvePgEntityRaw should throw on an unparseable BooleanLike string', () => {
+    @PgEntity({ createTableAuto: 'maybe' as never })
+    class BadBool {
+      @PgKey()
+      id!: string
+    }
+
+    const raw = rawFor(BadBool)
+    expect(() => resolvePgEntityRaw(raw)).toThrow(/Invalid boolean value/)
+  })
+
+  it('buildPgEntityRaw should return undefined for a non-entity class', () => {
+    class Plain {}
+    expect(buildPgEntityRaw(Plain)).toBeUndefined()
+  })
+
+  it('should throw when more than one @PgKey is declared', () => {
+    @PgEntity()
+    class MultiKey {
+      @PgKey()
+      id!: string
+
+      @PgKey()
+      secondId!: string
+    }
+
+    expect(() => rawFor(MultiKey)).toThrow(/exactly one @PgKey/)
+  })
+
+  it('should throw when no @PgKey is declared', () => {
+    @PgEntity()
+    class NoKey {
+      @PgColumn({ columnType: 'TEXT' })
+      name!: string
+    }
+
+    expect(() => rawFor(NoKey)).toThrow(/exactly one @PgKey/)
   })
 })

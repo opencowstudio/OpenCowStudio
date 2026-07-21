@@ -1,19 +1,24 @@
 import { consola } from 'consola'
 import type {
+  BooleanLike,
   PgColumnMetadata,
   PgColumnOptions,
+  PgColumnRaw,
   PgColumnType,
   PgEntityMetadata,
   PgEntityOptions,
+  PgEntityRaw,
+  PgIndexMetadata,
   PgKeyMetadata,
   PgKeyOptions,
+  PgKeyRaw,
 } from './types.ts'
 
 // Tagged logger so the core stays framework-agnostic (no Nuxt dep).
 const logger = consola.withTag('pg')
 
 // ---------------------------------------------------------------------------
-// Symbol keys used to store metadata on the class constructor
+// Symbol keys used to store raw decorator input on the class constructor
 // ---------------------------------------------------------------------------
 
 /** Convert a string (typically a field name) to snake_case. */
@@ -84,88 +89,216 @@ function resolveColumnType(value: PgColumnType | undefined, context: string): Pg
   return value
 }
 
-const ENTITY_METADATA = Symbol('pg:entity')
-const KEY_METADATA = Symbol('pg:key')
-const COLUMN_METADATA = Symbol('pg:column')
-
 // ---------------------------------------------------------------------------
-// Typed accessor helpers — attach metadata to a plain symbol key on `object`
+// Boolean normalisation — string forms accepted by BooleanLike options are
+// coerced to a real boolean during metadata resolution.
 // ---------------------------------------------------------------------------
 
-interface EntityMetadataHolder {
-  [ENTITY_METADATA]?: PgEntityMetadata
+/**
+ * Normalise a `BooleanLike` value to a boolean.
+ *
+ * `undefined` falls back to `fallback`. Real booleans pass through. Strings
+ * `'true'`/`'1'` become `true`; `'false'`/`'0'` become `false`. Any other
+ * string is rejected (logged + thrown) because the raw value is invalid.
+ */
+function toBoolean(value: BooleanLike | undefined, fallback: boolean, context: string): boolean {
+  if (value === undefined) return fallback
+  if (typeof value === 'boolean') return value
+  const normalised = value.trim().toLowerCase()
+  if (normalised === 'true' || normalised === '1') return true
+  if (normalised === 'false' || normalised === '0') return false
+  const message = `Invalid boolean value "${value}" for ${context}: expected true/false or the strings "true"/"false".`
+  logger.error(message)
+  throw new Error(message)
 }
 
-interface KeyMetadataHolder {
-  [KEY_METADATA]?: Map<string | symbol, PgKeyMetadata>
+// ---------------------------------------------------------------------------
+// Raw decorator storage — the decorators only record their *original* options
+// here; no validation, defaulting or type conversion happens at decoration
+// time. All of that lives in `resolvePgEntityRaw`.
+// ---------------------------------------------------------------------------
+
+const ENTITY_RAW = Symbol('pg:entityRaw')
+const KEYS_RAW = Symbol('pg:keysRaw')
+const COLUMNS_RAW = Symbol('pg:columnsRaw')
+
+interface EntityRawHolder {
+  [ENTITY_RAW]?: { className: string, options: PgEntityOptions }
 }
 
-interface ColumnMetadataHolder {
-  [COLUMN_METADATA]?: Map<string | symbol, PgColumnMetadata>
+interface KeysRawHolder {
+  [KEYS_RAW]?: Map<string | symbol, PgKeyRaw>
 }
 
-function getEntityMetadata(target: object): PgEntityMetadata | undefined {
-  return (target as EntityMetadataHolder)[ENTITY_METADATA]
+interface ColumnsRawHolder {
+  [COLUMNS_RAW]?: Map<string | symbol, PgColumnRaw>
 }
 
-function getKeysMetadata(target: object): Map<string | symbol, PgKeyMetadata> | undefined {
-  return (target as KeyMetadataHolder)[KEY_METADATA]
+function getEntityRaw(target: object): { className: string, options: PgEntityOptions } | undefined {
+  return (target as EntityRawHolder)[ENTITY_RAW]
 }
 
-function getColumnsMetadata(target: object): Map<string | symbol, PgColumnMetadata> | undefined {
-  return (target as ColumnMetadataHolder)[COLUMN_METADATA]
+function getKeysRaw(target: object): Map<string | symbol, PgKeyRaw> | undefined {
+  return (target as KeysRawHolder)[KEYS_RAW]
 }
 
-/** Initialise (or return existing) entity metadata on `target`. */
-function ensureEntityMetadata(target: object, opts: PgEntityOptions, className: string): PgEntityMetadata {
-  const holder = target as EntityMetadataHolder
-  if (!holder[ENTITY_METADATA]) {
-    const dbName = opts.dbName ?? 'default'
-    const schema = opts.schema?.trim() ? opts.schema : 'public'
-    const table = opts.table?.trim() ? opts.table : toSnakeCase(className)
+function getColumnsRaw(target: object): Map<string | symbol, PgColumnRaw> | undefined {
+  return (target as ColumnsRawHolder)[COLUMNS_RAW]
+}
 
-    // Validate resolved identifier names (dbName defaults to "default" connection).
-    if (dbName) assertValidIdentifier(dbName, 'dbName', `entity ${className}`)
-    assertValidIdentifier(schema, 'schema', `entity ${className}`)
-    assertValidIdentifier(table, 'table', `entity ${className}`)
-    for (const index of opts.indexes ?? []) {
-      for (const col of index.columns) {
-        assertValidIdentifier(col, 'index column', `entity ${className} index [${index.columns.join(', ')}]`)
-      }
+/** Initialise (or return existing) key raw map on `target`. */
+function ensureKeysRaw(target: object): Map<string | symbol, PgKeyRaw> {
+  const holder = target as KeysRawHolder
+  if (!holder[KEYS_RAW]) {
+    holder[KEYS_RAW] = new Map()
+  }
+  return holder[KEYS_RAW]!
+}
+
+/** Initialise (or return existing) column raw map on `target`. */
+function ensureColumnsRaw(target: object): Map<string | symbol, PgColumnRaw> {
+  const holder = target as ColumnsRawHolder
+  if (!holder[COLUMNS_RAW]) {
+    holder[COLUMNS_RAW] = new Map()
+  }
+  return holder[COLUMNS_RAW]!
+}
+
+// ---------------------------------------------------------------------------
+// Stage 1 — buildPgEntityRaw: read a class's decorators verbatim
+//
+// Assembles a `PgEntityRaw` from the raw decorator input stored on the class.
+// This performs NO transformation: defaults are not applied, identifiers are
+// not validated, and BooleanLike strings are not coerced. The field decorators
+// register their raw input via `addInitializer`, which only runs when an
+// instance is constructed, so the class must be instantiated (e.g. by
+// `resolveSingleEntity`) before calling this.
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the unmodified `PgEntityRaw` for a single entity constructor.
+ *
+ * Returns `undefined` when the class is not decorated with `@PgEntity`. The
+ * returned object holds the decorator options exactly as supplied — callers
+ * must construct the entity first so field decorators have registered their
+ * raw input. An entity must declare exactly one `@PgKey`; declaring zero or
+ * more than one throws (with the offending property names) so the error
+ * surfaces early.
+ */
+export function buildPgEntityRaw(ctor: Function): PgEntityRaw | undefined {
+  const raw = getEntityRaw(ctor)
+  if (!raw) return undefined
+  const keysRaw = getKeysRaw(ctor)
+  const columnsRaw = getColumnsRaw(ctor)
+
+  // An entity must declare exactly one @PgKey — fail fast with a clear message.
+  if (!keysRaw || keysRaw.size === 0) {
+    const message = `Entity "${raw.className}" declares no @PgKey field; an entity must declare exactly one @PgKey.`
+    logger.error(message)
+    throw new Error(message)
+  }
+  if (keysRaw.size > 1) {
+    const names = [...keysRaw.keys()].map(k => String(k)).join(', ')
+    const message = `Entity "${raw.className}" declares multiple @PgKey fields (${names}); an entity must declare exactly one @PgKey.`
+    logger.error(message)
+    throw new Error(message)
+  }
+
+  const key = [...keysRaw.values()][0]!
+  return {
+    className: raw.className,
+    options: raw.options,
+    key,
+    columns: columnsRaw ? [...columnsRaw.values()] : [],
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Stage 2 — resolvePgEntityRaw: validate, default and normalise
+//
+// Converts a `PgEntityRaw` into the final `PgEntityMetadata`. This is where
+// correctness is enforced: identifiers are validated, missing values get their
+// defaults, and BooleanLike strings are coerced to real booleans.
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve a `PgEntityRaw` into fully-validated `PgEntityMetadata`.
+ *
+ * Throws (with detailed diagnostics) when any identifier is illegal, a
+ * required `columnType` is missing/invalid, or a BooleanLike string cannot be
+ * parsed as a boolean.
+ */
+export function resolvePgEntityRaw(raw: PgEntityRaw): PgEntityMetadata {
+  const className = raw.className
+  const opts = raw.options
+
+  // --- entity-level identifiers & defaults ---
+  const dbName = opts.dbName?.trim() ? opts.dbName : 'default'
+  const schema = opts.schema?.trim() ? opts.schema : 'public'
+  const table = opts.table?.trim() ? opts.table : toSnakeCase(className)
+
+  if (dbName) assertValidIdentifier(dbName, 'dbName', `entity ${className}`)
+  assertValidIdentifier(schema, 'schema', `entity ${className}`)
+  assertValidIdentifier(table, 'table', `entity ${className}`)
+  for (const index of opts.indexes ?? []) {
+    for (const col of index.columns) {
+      assertValidIdentifier(col, 'index column', `entity ${className} index [${index.columns.join(', ')}]`)
     }
+  }
 
-    holder[ENTITY_METADATA] = {
-      dbName,
-      schema,
-      table,
-      comment: opts.comment ?? '',
-      createTableAuto: opts.createTableAuto ?? true,
-      addColumnAuto: opts.addColumnAuto ?? true,
-      createIndexAuto: opts.createIndexAuto ?? true,
-      indexes: opts.indexes ?? [],
-      keys: [],
-      columns: [],
+  const indexes: PgIndexMetadata[] = (opts.indexes ?? []).map(idx => ({
+    columns: idx.columns,
+    unique: toBoolean(idx.unique, false, `entity ${className} index [${idx.columns.join(', ')}].unique`),
+  }))
+
+  const createTableAuto = toBoolean(opts.createTableAuto, true, `entity ${className}.createTableAuto`)
+  const addColumnAuto = toBoolean(opts.addColumnAuto, true, `entity ${className}.addColumnAuto`)
+  const createIndexAuto = toBoolean(opts.createIndexAuto, true, `entity ${className}.createIndexAuto`)
+
+  // --- key field (exactly one) ---
+  if (!raw.key) {
+    const message = `Entity "${className}" has no @PgKey field; an entity must declare exactly one @PgKey.`
+    logger.error(message)
+    throw new Error(message)
+  }
+  const key: PgKeyMetadata = (() => {
+    const propertyKey = String(raw.key.propertyKey)
+    const column = raw.key.options.column?.trim() ? raw.key.options.column : toSnakeCase(propertyKey)
+    assertValidIdentifier(column, 'column', `key ${propertyKey} on ${className}`)
+    return {
+      propertyKey,
+      column,
+      generated: toBoolean(raw.key.options.generated, true, `key ${propertyKey}.generated on ${className}`),
+      comment: raw.key.options.comment ?? '',
     }
-  }
-  return holder[ENTITY_METADATA]!
-}
+  })()
 
-/** Initialise (or return existing) key metadata map on `target`. */
-function ensureKeysMetadata(target: object): Map<string | symbol, PgKeyMetadata> {
-  const holder = target as KeyMetadataHolder
-  if (!holder[KEY_METADATA]) {
-    holder[KEY_METADATA] = new Map()
-  }
-  return holder[KEY_METADATA]!
-}
+  // --- column fields ---
+  const columns: PgColumnMetadata[] = raw.columns.map((c) => {
+    const propertyKey = String(c.propertyKey)
+    const column = c.options.column?.trim() ? c.options.column : toSnakeCase(propertyKey)
+    assertValidIdentifier(column, 'column', `column ${propertyKey} on ${className}`)
+    const columnType = resolveColumnType(c.options.columnType, `column ${propertyKey} on ${className}`)
+    return {
+      propertyKey,
+      column,
+      comment: c.options.comment ?? '',
+      columnType,
+    }
+  })
 
-/** Initialise (or return existing) column metadata map on `target`. */
-function ensureColumnsMetadata(target: object): Map<string | symbol, PgColumnMetadata> {
-  const holder = target as ColumnMetadataHolder
-  if (!holder[COLUMN_METADATA]) {
-    holder[COLUMN_METADATA] = new Map()
+  return {
+    dbName,
+    schema,
+    table,
+    comment: opts.comment ?? '',
+    createTableAuto,
+    addColumnAuto,
+    createIndexAuto,
+    indexes,
+    key,
+    columns,
   }
-  return holder[COLUMN_METADATA]!
 }
 
 // ---------------------------------------------------------------------------
@@ -174,8 +307,10 @@ function ensureColumnsMetadata(target: object): Map<string | symbol, PgColumnMet
 // Uses the native ES field decorator signature:
 //   (value: undefined, context: ClassFieldDecoratorContext) => void
 //
-// Metadata is stored on the *constructor* via `addInitializer`, which runs
-// once after all decorators have been applied to the class.
+// Its `addInitializer` only records the raw options on the constructor; all
+// validation/defaulting happens later in `resolvePgEntityRaw`. The one check
+// that remains here guards the *instance field value* (a key must be a string
+// at runtime), which is not part of the decorator options.
 // ---------------------------------------------------------------------------
 
 export function PgKey(options: PgKeyOptions = {}): <C, V>(
@@ -184,9 +319,6 @@ export function PgKey(options: PgKeyOptions = {}): <C, V>(
 ) => void {
   return function (value: undefined, context: ClassFieldDecoratorContext): void {
     const propertyKey = context.name
-    const column = options.column !== undefined ? options.column : toSnakeCase(String(propertyKey))
-    const generated = options.generated !== undefined ? options.generated : true
-    const comment = options.comment !== undefined ? options.comment : ''
 
     context.addInitializer(function (this: unknown): void {
       const klass = (this as Record<string | symbol, unknown>).constructor
@@ -196,9 +328,8 @@ export function PgKey(options: PgKeyOptions = {}): <C, V>(
         logger.error(message)
         throw new Error(message)
       }
-      assertValidIdentifier(column, 'column', `key ${String(propertyKey)} on ${klass.name || 'anonymous'}`)
-      const map = ensureKeysMetadata(klass as object)
-      map.set(propertyKey, { propertyKey, column, generated, comment })
+      const map = ensureKeysRaw(klass as object)
+      map.set(propertyKey, { propertyKey, options })
     })
   }
 }
@@ -213,15 +344,11 @@ export function PgColumn(options: PgColumnOptions = {}): <C, V>(
 ) => void {
   return function (value: undefined, context: ClassFieldDecoratorContext): void {
     const propertyKey = context.name
-    const column = options.column !== undefined ? options.column : toSnakeCase(String(propertyKey))
-    const comment = options.comment !== undefined ? options.comment : ''
-    const columnType = resolveColumnType(options.columnType, `column ${String(propertyKey)}`)
 
     context.addInitializer(function (this: unknown): void {
       const klass = (this as Record<string | symbol, unknown>).constructor
-      assertValidIdentifier(column, 'column', `column ${String(propertyKey)} on ${klass.name || 'anonymous'}`)
-      const map = ensureColumnsMetadata(klass as object)
-      map.set(propertyKey, { propertyKey, column, comment, columnType })
+      const map = ensureColumnsRaw(klass as object)
+      map.set(propertyKey, { propertyKey, options })
     })
   }
 }
@@ -239,10 +366,11 @@ export function PgEntity(options: PgEntityOptions = {}): <C extends abstract new
 ) => C | void {
   return function (value: Function, context: ClassDecoratorContext): void {
     const target = value as object
-    ensureEntityMetadata(target, options, value.name)
-    // pre-initialise the key / column maps so field decorators can use them
-    ensureKeysMetadata(target)
-    ensureColumnsMetadata(target)
+    const holder = target as EntityRawHolder
+    holder[ENTITY_RAW] = { className: value.name, options }
+    // pre-initialise the key / column raw maps so field decorators can use them
+    ensureKeysRaw(target)
+    ensureColumnsRaw(target)
   }
 }
 
@@ -253,16 +381,15 @@ export function PgEntity(options: PgEntityOptions = {}): <C extends abstract new
 /**
  * Resolve the fully-assembled metadata for a single entity constructor.
  *
- * Field decorators (@PgKey / @PgColumn) register their metadata via
+ * Field decorators (@PgKey / @PgColumn) register their raw input via
  * `addInitializer`, which only runs when an instance is constructed. To let
  * consumers query metadata without manually calling `new`, this constructs
- * the entity to fire those initializers, then assembles and returns the
- * fully-resolved metadata. The result is rebuilt on every call — no parsing
- * is cached.
+ * the entity to fire those initializers, then builds the raw config and
+ * resolves it into the final metadata. The result is rebuilt on every call —
+ * no parsing is cached.
  */
 function resolveSingleEntity(ctor: Function): PgEntityMetadata | undefined {
-  const entityMeta = getEntityMetadata(ctor)
-  if (!entityMeta) return undefined
+  if (!getEntityRaw(ctor)) return undefined
 
   try {
     new (ctor as new () => unknown)()
@@ -273,11 +400,9 @@ function resolveSingleEntity(ctor: Function): PgEntityMetadata | undefined {
     throw new Error(message)
   }
 
-  return {
-    ...entityMeta,
-    keys: [...(getKeysMetadata(ctor)?.values() ?? [])],
-    columns: [...(getColumnsMetadata(ctor)?.values() ?? [])],
-  }
+  const raw = buildPgEntityRaw(ctor)
+  if (!raw) return undefined
+  return resolvePgEntityRaw(raw)
 }
 
 /**
@@ -293,7 +418,7 @@ export function resolvePgEntities(modules: Record<string, unknown>[] = []): PgEn
   let resolved = 0
   for (const mod of modules) {
     for (const exported of Object.values(mod)) {
-      if (typeof exported === 'function' && getEntityMetadata(exported as object)) {
+      if (typeof exported === 'function' && getEntityRaw(exported as object)) {
         const meta = resolveSingleEntity(exported as Function)
         if (meta) {
           metas.push(meta)

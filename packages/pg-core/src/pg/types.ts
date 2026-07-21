@@ -15,12 +15,21 @@
 
 // === Decorator metadata =====================================================
 
+/**
+ * A value that may be provided either as a real boolean or as a string that
+ * resolves to a boolean (e.g. 'true' / 'false' / '1' / '0'). String forms are
+ * accepted so configuration sources that only yield strings (env vars, YAML,
+ * JSON) can still drive boolean options. The string is normalised to a boolean
+ * during metadata resolution (see `resolvePgEntityRaw`).
+ */
+export type BooleanLike = boolean | string
+
 /** Options for @PgKey decorator */
 export interface PgKeyOptions {
   /** column name in database, default '' (derived from property name) */
   column?: string
-  /** whether the key is auto-generated (e.g. SERIAL / GENERATED ALWAYS), default true */
-  generated?: boolean
+  /** whether the key is auto-generated (e.g. SERIAL / GENERATED ALWAYS), default true; accepts boolean or string */
+  generated?: BooleanLike
   /** column comment, default '' */
   comment?: string
 }
@@ -49,8 +58,8 @@ export type PgColumnType =
 export interface PgIndexOptions {
   /** list of column names that form the index */
   columns: string[]
-  /** whether the index is unique, default false */
-  unique?: boolean
+  /** whether the index is unique, default false; accepts boolean or string */
+  unique?: BooleanLike
 }
 
 /** Metadata stored for each index (used inside PgEntityMetadata indexes array) */
@@ -63,12 +72,12 @@ export interface PgIndexMetadata {
 
 /** Options for @PgEntity decorator */
 export interface PgEntityOptions {
-  /** automatically create the table if it does not exist, default true */
-  createTableAuto?: boolean
-  /** automatically add new columns not present in the database, default true */
-  addColumnAuto?: boolean
-  /** automatically create indexes defined in `indexes`, default true */
-  createIndexAuto?: boolean
+  /** automatically create the table if it does not exist, default true; accepts boolean or string */
+  createTableAuto?: BooleanLike
+  /** automatically add new columns not present in the database, default true; accepts boolean or string */
+  addColumnAuto?: BooleanLike
+  /** automatically create indexes defined in `indexes`, default true; accepts boolean or string */
+  createIndexAuto?: BooleanLike
   /** database name, default '' (uses default connection db) */
   dbName?: string
   /** schema name, default 'public' */
@@ -91,13 +100,14 @@ export interface PgEntityMetadata {
   addColumnAuto: boolean
   createIndexAuto: boolean
   indexes: PgIndexMetadata[]
-  keys: PgKeyMetadata[]
+  /** the single primary/unique key declared on the class (exactly one @PgKey required) */
+  key: PgKeyMetadata
   columns: PgColumnMetadata[]
 }
 
 /** Metadata stored for each @PgKey-decorated property */
 export interface PgKeyMetadata {
-  propertyKey: string | symbol
+  propertyKey: string
   column: string
   generated: boolean
   comment: string
@@ -105,10 +115,54 @@ export interface PgKeyMetadata {
 
 /** Metadata stored for each @PgColumn-decorated property */
 export interface PgColumnMetadata {
-  propertyKey: string | symbol
+  propertyKey: string
   column: string
   comment: string
   columnType: PgColumnType
+}
+
+// === Raw decorator configuration ============================================
+//
+// These types capture the *unmodified* decorator input for a single entity
+// class. They mirror the shape of the resolved metadata (PgEntityMetadata /
+// PgKeyMetadata / PgColumnMetadata) but hold the raw options exactly as the
+// user supplied them — no defaults applied, no identifier validation, no
+// boolean/string normalisation.
+//
+// The flow is two-stage:
+//   1. `buildPgEntityRaw` reads a class's decorators and assembles a
+//      `PgEntityRaw` verbatim (no transformation).
+//   2. `resolvePgEntityRaw` validates the raw values, fills defaults and
+//      normalises types (e.g. a string 'false' -> boolean false) into the
+//      final `PgEntityMetadata`.
+// ============================================================================
+
+/** Raw decorator input for a single @PgKey-decorated field. */
+export interface PgKeyRaw {
+  /** the property name on the class (as declared in the decorator context) */
+  propertyKey: string | symbol
+  /** the original, unmodified options passed to @PgKey */
+  options: PgKeyOptions
+}
+
+/** Raw decorator input for a single @PgColumn-decorated field. */
+export interface PgColumnRaw {
+  /** the property name on the class (as declared in the decorator context) */
+  propertyKey: string | symbol
+  /** the original, unmodified options passed to @PgColumn */
+  options: PgColumnOptions
+}
+
+/** Raw decorator input for a single @PgEntity-decorated class. */
+export interface PgEntityRaw {
+  /** the class name (used to derive the default table name) */
+  className: string
+  /** the original, unmodified options passed to @PgEntity */
+  options: PgEntityOptions
+  /** the single key field declared on the class (exactly one @PgKey required) */
+  key: PgKeyRaw
+  /** the column fields declared on the class (one entry per @PgColumn) */
+  columns: PgColumnRaw[]
 }
 
 // === Configuration metadata =================================================

@@ -171,8 +171,8 @@ function ensureColumnsRaw(target: object): Map<string | symbol, PgColumnRaw> {
 // This performs NO transformation: defaults are not applied, identifiers are
 // not validated, and BooleanLike strings are not coerced. The field decorators
 // register their raw input via `addInitializer`, which only runs when an
-// instance is constructed, so the class must be instantiated (e.g. by
-// `resolveSingleEntity`) before calling this.
+// instance is constructed, so the class must be instantiated before calling
+// this.
 // ---------------------------------------------------------------------------
 
 /**
@@ -372,61 +372,4 @@ export function PgEntity(options: PgEntityOptions = {}): <C extends abstract new
     ensureKeysRaw(target)
     ensureColumnsRaw(target)
   }
-}
-
-// ---------------------------------------------------------------------------
-// Public helper: retrieve fully-assembled entity metadata at runtime
-// ---------------------------------------------------------------------------
-
-/**
- * Resolve the fully-assembled metadata for a single entity constructor.
- *
- * Field decorators (@PgKey / @PgColumn) register their raw input via
- * `addInitializer`, which only runs when an instance is constructed. To let
- * consumers query metadata without manually calling `new`, this constructs
- * the entity to fire those initializers, then builds the raw config and
- * resolves it into the final metadata. The result is rebuilt on every call —
- * no parsing is cached.
- */
-function resolveSingleEntity(ctor: Function): PgEntityMetadata | undefined {
-  if (!getEntityRaw(ctor)) return undefined
-
-  try {
-    new (ctor as new () => unknown)()
-  }
-  catch (err) {
-    const message = `Failed to resolve entity "${ctor.name}": ${err instanceof Error ? err.message : String(err)}. Entity classes must have a no-argument constructor so their field metadata can be collected.`
-    logger.error(message)
-    throw new Error(message)
-  }
-
-  const raw = buildPgEntityRaw(ctor)
-  if (!raw) return undefined
-  return resolvePgEntityRaw(raw)
-}
-
-/**
- * Finalise and return metadata for every entity contained in the given
- * imported modules. Each module's exported values are inspected; exported
- * classes registered via @PgEntity are resolved so their field metadata is
- * collected. Returns fully-assembled `PgEntityMetadata` for all matched
- * entities. Results are freshly parsed on every call — nothing is cached.
- */
-export function resolvePgEntities(modules: Record<string, unknown>[] = []): PgEntityMetadata[] {
-  logger.info('Resolving @PgEntity metadata from imported modules...')
-  const metas: PgEntityMetadata[] = []
-  let resolved = 0
-  for (const mod of modules) {
-    for (const exported of Object.values(mod)) {
-      if (typeof exported === 'function' && getEntityRaw(exported as object)) {
-        const meta = resolveSingleEntity(exported as Function)
-        if (meta) {
-          metas.push(meta)
-          resolved++
-        }
-      }
-    }
-  }
-  logger.info(`Resolved ${resolved} @PgEntity class(es) across ${modules.length} module(s)`)
-  return metas
 }

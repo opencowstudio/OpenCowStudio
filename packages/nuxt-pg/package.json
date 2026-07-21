@@ -19,6 +19,7 @@
     "@opencowstudio/core": "workspace:*",
     "@opencowstudio/pg-core": "workspace:*",
     "consola": "^3.4.2",
+    "fast-glob": "^3.3.3",
     "yaml": "^2.9.0"
   },
   "peerDependencies": {

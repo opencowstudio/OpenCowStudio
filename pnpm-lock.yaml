@@ -66,6 +66,9 @@ importers:
       consola:
         specifier: ^3.4.2
         version: 3.4.2
+      fast-glob:
+        specifier: ^3.3.3
+        version: 3.3.3
       yaml:
         specifier: ^2.9.0
         version: 2.9.0

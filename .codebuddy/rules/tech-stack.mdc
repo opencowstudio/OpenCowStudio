@@ -70,6 +70,7 @@ app/                  # Frontend application
 └── assets/           # Uncompiled assets (processed by Vite)
 server/               # Nitro backend
 ├── api/              # API route handlers (auto-registered)
+├── entities/         # Entity definitions
 ├── middleware/       # Server middleware
 └── utils/            # Server-side utilities
 public/               # Static assets served at root (untouched)
@@ -155,6 +156,7 @@ package.json          # Workspace root: cross-package scripts (build/typecheck/t
 - Follow Nuxt 4 directory conventions for apps; do not reinvent routing or module loading.
 - Components in `components/` and composables in `composables/` are auto-imported — name them clearly and avoid collisions.
 - Server API routes live in `server/api/` and are auto-registered by Nitro; shared helpers go in `server/utils/`.
+- Entity definitions live in `server/entities/`.
 - Keep `public/` for static files only; compiled assets belong in `app/assets/`.
 - Configuration belongs in `nuxt.config.ts`; avoid hard-coding env values — use runtime config + `.env`.
 - Tests mirror source layout and are never part of the published/built output.

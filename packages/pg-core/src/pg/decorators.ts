@@ -88,13 +88,6 @@ const ENTITY_METADATA = Symbol('pg:entity')
 const KEY_METADATA = Symbol('pg:key')
 const COLUMN_METADATA = Symbol('pg:column')
 
-/**
- * Registry of every class decorated with @PgEntity, keyed by constructor.
- * Populated at class-definition time so entity metadata can be resolved
- * without manual construction by the consumer.
- */
-const ENTITY_REGISTRY = new Map<Function, PgEntityOptions>()
-
 // ---------------------------------------------------------------------------
 // Typed accessor helpers — attach metadata to a plain symbol key on `object`
 // ---------------------------------------------------------------------------
@@ -250,8 +243,6 @@ export function PgEntity(options: PgEntityOptions = {}): <C extends abstract new
     // pre-initialise the key / column maps so field decorators can use them
     ensureKeysMetadata(target)
     ensureColumnsMetadata(target)
-    // self-register so the class can be resolved later
-    ENTITY_REGISTRY.set(value, options)
   }
 }
 
@@ -302,7 +293,7 @@ export function resolvePgEntities(modules: Record<string, unknown>[] = []): PgEn
   let resolved = 0
   for (const mod of modules) {
     for (const exported of Object.values(mod)) {
-      if (typeof exported === 'function' && ENTITY_REGISTRY.has(exported as Function)) {
+      if (typeof exported === 'function' && getEntityMetadata(exported as object)) {
         const meta = resolveSingleEntity(exported as Function)
         if (meta) {
           metas.push(meta)

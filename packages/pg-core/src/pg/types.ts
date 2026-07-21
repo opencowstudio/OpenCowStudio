@@ -53,6 +53,14 @@ export interface PgIndexOptions {
   unique?: boolean
 }
 
+/** Metadata stored for each index (used inside PgEntityMetadata indexes array) */
+export interface PgIndexMetadata {
+  /** list of column names that form the index */
+  columns: string[]
+  /** whether the index is unique */
+  unique: boolean
+}
+
 /** Options for @PgEntity decorator */
 export interface PgEntityOptions {
   /** automatically create the table if it does not exist, default true */
@@ -82,7 +90,7 @@ export interface PgEntityMetadata {
   createTableAuto: boolean
   addColumnAuto: boolean
   createIndexAuto: boolean
-  indexes: PgIndexOptions[]
+  indexes: PgIndexMetadata[]
   keys: PgKeyMetadata[]
   columns: PgColumnMetadata[]
 }

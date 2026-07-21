@@ -52,11 +52,11 @@ export default defineNuxtModule<ModuleOptions>({
 
     const resolver = createResolver(import.meta.url)
 
-    // Collect entity source files from the configured glob patterns so they can
-    // be registered downstream. The scan runs at build time only.
-    const entityFiles = scanEntityPaths(nuxt.options.rootDir, options.entityPaths!)
-    if (entityFiles.length > 0) {
-      useLogger(MODULE_NAME).info(`Scanned ${entityFiles.length} entity file(s)`)
+    // Collect entity classes from the configured glob patterns so they can be
+    // registered downstream. The scan runs at build time only.
+    const entities = await scanEntityPaths(nuxt.options.rootDir, options.entityPaths!)
+    if (entities.size > 0) {
+      useLogger(MODULE_NAME).info(`Scanned ${entities.size} entity class(es)`)
     }
 
     // Locate, read and serialize the pg config file into a server-only manifest

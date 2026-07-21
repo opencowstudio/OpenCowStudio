@@ -11,6 +11,12 @@ application.
   serializes it to a formatted JSON string, logs it, and bakes that string into a
   **server-only** manifest (`pg.manifest.ts`), so credentials never reach the
   client bundle.
+- At build time it scans the configured `entityPaths` (default
+  `server/entities/**/*.ts`), converts every discovered entity class into a
+  `PgEntityRaw`, logs the total number of scanned entities and each conversion,
+  and bakes the collection into a **server-only** manifest
+  (`pg.entities.manifest.ts`) as a formatted JSON string. The runtime can later
+  parse that string back into entity metadata.
 - At runtime a Nitro plugin parses the manifest's JSON string into a
   `PgConfigMetadata` object and, when a configuration is present, instantiates a
   `PgDataSourceManager` from `@opencowstudio/pg-core`.

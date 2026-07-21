@@ -2,10 +2,8 @@ import {
   addServerPlugin,
   createResolver,
   defineNuxtModule,
-  useLogger,
 } from '@nuxt/kit'
-import { registerPgManifest } from './builder/manifest'
-import { scanEntityPaths } from './builder/scanner'
+import { registerPgManifest, registerPgEntityManifest } from './builder/manifest'
 
 const MODULE_NAME = '@opencowstudio/nuxt-pg'
 
@@ -52,12 +50,10 @@ export default defineNuxtModule<ModuleOptions>({
 
     const resolver = createResolver(import.meta.url)
 
-    // Collect entity classes from the configured glob patterns so they can be
-    // registered downstream. The scan runs at build time only.
-    const entities = await scanEntityPaths(nuxt.options.rootDir, options.entityPaths!)
-    if (entities.size > 0) {
-      useLogger(MODULE_NAME).info(`Scanned ${entities.size} entity class(es)`)
-    }
+    // Scan the configured entity paths, convert each entity into a PgEntityRaw,
+    // and bake the collection into a server-only manifest at build time. The
+    // runtime can later parse the JSON string back into entity metadata.
+    await registerPgEntityManifest(nuxt, options.entityPaths!)
 
     // Locate, read and serialize the pg config file into a server-only manifest
     // at build time. The runtime parses the JSON string back into metadata.

@@ -1,9 +1,5 @@
-import {
-  addServerPlugin,
-  createResolver,
-  defineNuxtModule,
-} from '@nuxt/kit'
-import { registerPgManifest, registerPgEntityManifest } from './builder/manifest'
+import { defineNuxtModule } from '@nuxt/kit'
+import { setupModule } from './builder/setup'
 
 const MODULE_NAME = '@opencowstudio/nuxt-pg'
 
@@ -44,22 +40,6 @@ export default defineNuxtModule<ModuleOptions>({
     entityPaths: ['server/entities/**/*.ts'],
   },
   async setup(options, nuxt) {
-    if (!options.enabled) {
-      return
-    }
-
-    const resolver = createResolver(import.meta.url)
-
-    // Scan the configured entity paths, convert each entity into a PgEntityRaw,
-    // and bake the collection into a server-only manifest at build time. The
-    // runtime can later parse the JSON string back into entity metadata.
-    await registerPgEntityManifest(nuxt, options.entityPaths!)
-
-    // Locate, read and serialize the pg config file into a server-only manifest
-    // at build time. The runtime parses the JSON string back into metadata.
-    registerPgManifest(nuxt, options.configFile!)
-
-    // Register the Nitro plugin that instantiates the datasource manager.
-    addServerPlugin(resolver.resolve('./runtime/plugins/bootstrap'))
+    await setupModule(options, nuxt)
   },
 })

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Nuxt } from 'nuxt/schema'
@@ -12,9 +12,15 @@ vi.mock('@nuxt/kit', () => ({
 import { addTemplate } from '@nuxt/kit'
 import { registerPgEntityManifest, PG_ENTITIES_MANIFEST_ALIAS } from '../../src/builder/manifest'
 
-// Create the temp root inside the package so the dynamically imported entity
-// files can resolve `@opencowstudio/pg-core` and Vite can transform them.
-const PKG_ROOT = resolve(fileURLToPath(import.meta.url), '../..')
+// Resolve to the package root (test file lives in tests/builder, so three
+// levels up) so the scanner reads fixtures and resolves `@opencowstudio/pg-core`.
+const PKG_ROOT = resolve(fileURLToPath(import.meta.url), '../../..')
+
+// The User entity lives as a static fixture under `tests/fixtures/entities` so
+// the scanner can read it directly — no temporary file is written per test.
+const ENTITY_FIXTURE_PATTERN = join(PKG_ROOT, 'tests/fixtures/entities/**/*.ts')
+
+// Temp root used only for the "no entities" case, so its scan matches nothing.
 let dir: string | null = null
 
 afterEach(() => {
@@ -31,26 +37,14 @@ beforeEach(() => {
   dir = mkdtempSync(join(PKG_ROOT, '.entity-scan-'))
 })
 
-function makeNuxt(): Nuxt {
-  return { options: { alias: {}, rootDir: dir! } } as unknown as Nuxt
+function makeNuxt(rootDir: string = dir!): Nuxt {
+  return { options: { alias: {}, rootDir } } as unknown as Nuxt
 }
-
-const ENTITY_SOURCE = `
-import { PgEntity, PgKey, PgColumn } from '@opencowstudio/pg-core'
-
-@PgEntity({ table: 'users' })
-export class User {
-  @PgKey() id!: string
-  @PgColumn({ columnType: 'TEXT' }) name!: string
-}
-`
 
 describe('registerPgEntityManifest', () => {
   it('registers a template and exposes it via the #pg-entities-manifest alias', async () => {
-    mkdirSync(join(dir!, 'server/entities'), { recursive: true })
-    writeFileSync(join(dir!, 'server/entities/user.ts'), ENTITY_SOURCE)
-    const nuxt = makeNuxt()
-    const dst = await registerPgEntityManifest(nuxt, ['server/entities/**/*.ts'])
+    const nuxt = makeNuxt(PKG_ROOT)
+    const dst = await registerPgEntityManifest(nuxt, [ENTITY_FIXTURE_PATTERN])
     expect(dst).toBe('/virtual/pg.entities.manifest.ts')
     expect(addTemplate).toHaveBeenCalledOnce()
 
@@ -61,9 +55,7 @@ describe('registerPgEntityManifest', () => {
   })
 
   it('serializes scanned entities into a formatted JSON string', async () => {
-    mkdirSync(join(dir!, 'server/entities'), { recursive: true })
-    writeFileSync(join(dir!, 'server/entities/user.ts'), ENTITY_SOURCE)
-    await registerPgEntityManifest(makeNuxt(), ['server/entities/**/*.ts'])
+    await registerPgEntityManifest(makeNuxt(PKG_ROOT), [ENTITY_FIXTURE_PATTERN])
 
     const opts = (addTemplate as ReturnType<typeof vi.fn>).mock.calls[0]![0]
     const contents = opts.getContents()

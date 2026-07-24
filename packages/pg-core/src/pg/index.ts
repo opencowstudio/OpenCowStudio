@@ -29,25 +29,6 @@ export type {
   PgConfigMetadata,
 } from './types.ts'
 
-// Static decorator parser (TypeScript compiler API, builder stage).
-export {
-  createProgram,
-  findEntityClassDeclarations,
-  parseClassDecorator,
-  parsePropertyDecorators,
-  parsePgKey,
-  parsePgColumn,
-  parseIndexDecorators,
-  parsePgEntityRaw,
-  parsePgEntities,
-} from './builder/parser'
-export type {
-  ParseProgramOptions,
-  ParsedPropertyDecorators,
-  LiteralValue,
-  EntityClassNode,
-} from './builder/parser'
-
 // Entity repository (runtime stage): raw -> validated metadata.
 export { resolvePgEntityRaw } from './runtime/repository'
 

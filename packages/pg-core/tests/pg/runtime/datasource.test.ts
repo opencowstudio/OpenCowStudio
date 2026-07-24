@@ -4,11 +4,11 @@ import {
   PgDataSourceManager,
   type PoolFactory,
   type PoolLike,
-} from '../../src/pg'
+} from '../../../src/pg'
 import type {
   PgConfigMetadata,
   PgNodeMetadata,
-} from '../../src/pg'
+} from '../../../src/pg'
 
 // Build the datasource config metadata in code so the tests exercise the same
 // shape the app uses in development.

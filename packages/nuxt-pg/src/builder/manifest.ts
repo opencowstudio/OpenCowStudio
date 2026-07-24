@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { addTemplate, useLogger } from '@nuxt/kit'
 import type { Nuxt } from 'nuxt/schema'
-import { buildPgEntityRaw, type PgEntityRaw } from '@opencowstudio/pg-core'
+import { parsePgEntities, type PgEntityRaw } from '@opencowstudio/pg-core'
 import { findPgConfigFile, scanEntityPaths } from './scanner'
 import { readPgConfigNamespace } from './yaml'
 
@@ -67,12 +67,9 @@ export function registerPgManifest(nuxt: Nuxt, configFile: string): string {
 
 /**
  * Scan the configured entity paths, convert every discovered entity class into
- * a `PgEntityRaw`, serialize the collection to a formatted JSON string, and bake
- * that string into a server-only manifest at build time.
- *
- * The field decorators (`@PgKey` / `@PgColumn`) register their raw input via an
- * `addInitializer` that only runs when an instance is constructed, so each
- * entity class is instantiated once before `buildPgEntityRaw` is called.
+ * a `PgEntityRaw` by parsing its decorators statically (no module import, no
+ * class instantiation), serialize the collection to a formatted JSON string,
+ * and bake that string into a server-only manifest at build time.
  *
  * Build-time only — this helper must never be imported from the runtime.
  *
@@ -81,36 +78,15 @@ export function registerPgManifest(nuxt: Nuxt, configFile: string): string {
 export async function registerPgEntityManifest(nuxt: Nuxt, entityPaths: string[]): Promise<string> {
   const logger = useLogger(MODULE_NAME)
 
-  // Collect entity classes from the configured glob patterns.
-  const entities = await scanEntityPaths(nuxt.options.rootDir, entityPaths)
-  logger.info(`Scanned ${entities.size} entity class(es) from entity paths`)
+  // Collect entity source files from the configured glob patterns.
+  const files = await scanEntityPaths(nuxt.options.rootDir, entityPaths)
+  logger.info(`Scanned ${files.length} entity file(s) from entity paths`)
 
-  // Convert each entity class into its raw decorator metadata. Field decorators
-  // register their raw input via `addInitializer`, which only runs when an
-  // instance is constructed, so each class must be instantiated first.
-  const entityRaws: PgEntityRaw[] = []
-  for (const ctor of entities) {
-    try {
-      // Instantiate so the field decorators' addInitializer runs and records
-      // their raw input on the constructor before we read it back.
-      new (ctor as new () => unknown)()
-    } catch (err) {
-      logger.warn(`Failed to instantiate entity "${ctor.name}"; skipping. Reason: ${String(err)}`)
-      continue
-    }
-
-    let raw: PgEntityRaw | undefined
-    try {
-      raw = buildPgEntityRaw(ctor)
-    } catch (err) {
-      logger.warn(`Failed to build PgEntityRaw for entity "${ctor.name}"; skipping. Reason: ${String(err)}`)
-      continue
-    }
-    if (!raw) {
-      continue
-    }
-
-    entityRaws.push(raw)
+  // Parse each entity class statically (via the TypeScript compiler API) into
+  // its raw decorator metadata. Files that fail to parse are skipped with a
+  // warning so a single bad entity does not abort the whole build.
+  const entityRaws: PgEntityRaw[] = parsePgEntities(files, { skipInvalid: true })
+  for (const raw of entityRaws) {
     logger.info(`Converted entity "${raw.className}" to PgEntityRaw`)
   }
 

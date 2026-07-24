@@ -1,10 +1,10 @@
 import { Pool } from 'pg'
-import {
-  type PgConfigMetadata,
-  type PgDatabaseMetadata,
-  type PgNodeMetadata,
-  type PgPoolMetadata,
-} from './types.ts'
+import type {
+  PgConfigMetadata,
+  PgDatabaseMetadata,
+  PgNodeMetadata,
+  PgPoolMetadata,
+} from '../types.ts'
 
 // ---------------------------------------------------------------------------
 // Pool abstraction

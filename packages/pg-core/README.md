@@ -4,11 +4,19 @@ Framework-agnostic PostgreSQL ORM core for [`opencowstudio`](../../README.md).
 
 This package contains everything that does **not** depend on Nuxt:
 
-- `@PgEntity` / `@PgKey` / `@PgColumn` decorators and their two-stage metadata
-  helpers (`buildPgEntityRaw`, `resolvePgEntityRaw`).
+- `@PgEntity` / `@PgKey` / `@PgColumn` / `@PgIndex` decorators (static markers).
+  The decorator *option* types (`PgEntityOptions`, `PgKeyOptions`,
+  `PgColumnOptions`, `PgIndexOptions`) and the shared `BooleanLike` /
+  `PgColumnType` primitives also live in `decorators.ts`.
+- A two-stage metadata pipeline:
+  - **builder** (`builder/parser.ts`): `parsePgEntities` statically reads the
+    decorator source via the TypeScript compiler API into a `PgEntityRaw`
+    (verbatim — no defaults, no validation).
+  - **runtime** (`runtime/repository.ts`): `resolvePgEntityRaw` validates,
+    defaults and normalises the `PgEntityRaw` into a `PgEntityMetadata`.
 - Typed datasource configuration metadata (`PgConfigMetadata`).
 - Connection-pool routing & multi-database registry
-  (`PgDataSource`, `PgDataSourceManager`).
+  (`runtime/datasource.ts`: `PgDataSource`, `PgDataSourceManager`).
 
 Id-generation utilities (`generateGuid`, `generateId`) are re-exported from
 [`@opencowstudio/core`](../core) so they can be shared across packages.

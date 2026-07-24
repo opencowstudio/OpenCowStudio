@@ -2,29 +2,55 @@
 // PostgreSQL — barrel exports
 // ---------------------------------------------------------------------------
 
-export { PgEntity, PgKey, PgColumn, buildPgEntityRaw, resolvePgEntityRaw } from './decorators'
+// Entity decorators (static markers) + their option types.
+export { PgEntity, PgKey, PgColumn, PgIndex } from './decorators'
 export type {
   PgEntityOptions,
   PgKeyOptions,
   PgColumnOptions,
-  PgColumnType,
   PgIndexOptions,
+  PgColumnType,
+  BooleanLike,
+} from './decorators'
+
+// Raw parse products, runtime metadata, and configuration metadata types.
+export type {
+  PgEntityRaw,
+  PgKeyRaw,
+  PgColumnRaw,
+  PgIndexRaw,
   PgEntityMetadata,
   PgKeyMetadata,
   PgColumnMetadata,
-  BooleanLike,
-  PgKeyRaw,
-  PgColumnRaw,
-  PgEntityRaw,
-} from './types.ts'
-
-export type {
+  PgIndexMetadata,
   PgPoolMetadata,
   PgNodeMetadata,
   PgDatabaseMetadata,
   PgConfigMetadata,
 } from './types.ts'
 
-// DataSource (connection-pool routing & multi-database registry)
-export { PgDataSource, PgDataSourceManager } from './datasource.ts'
-export type { PoolLike, PoolFactory } from './datasource.ts'
+// Static decorator parser (TypeScript compiler API, builder stage).
+export {
+  createProgram,
+  findEntityClassDeclarations,
+  parseClassDecorator,
+  parsePropertyDecorators,
+  parsePgKey,
+  parsePgColumn,
+  parseIndexDecorators,
+  parsePgEntityRaw,
+  parsePgEntities,
+} from './builder/parser'
+export type {
+  ParseProgramOptions,
+  ParsedPropertyDecorators,
+  LiteralValue,
+  EntityClassNode,
+} from './builder/parser'
+
+// Entity repository (runtime stage): raw -> validated metadata.
+export { resolvePgEntityRaw } from './runtime/repository'
+
+// DataSource (connection-pool routing & multi-database registry).
+export { PgDataSource, PgDataSourceManager } from './runtime/datasource'
+export type { PoolLike, PoolFactory } from './runtime/datasource'

@@ -14,31 +14,19 @@ export function findPgConfigFile(rootDir: string, configFile: string): string | 
 }
 
 /**
- * Collect entity classes by expanding the given glob patterns relative to the
- * Nuxt root directory, importing every matched file, and collecting each
- * `function`-typed export (which includes entity classes) into a Set.
+ * Collect entity source files by expanding the given glob patterns relative to
+ * the Nuxt root directory and returning the absolute paths of every matched
+ * file. The matching files are later parsed statically (no module import, no
+ * class instantiation) by `registerPgEntityManifest` via pg-core's parser.
  *
  * Build-time only — this helper must never be imported from the runtime.
  *
- * @returns A Set of entity classes (function-typed exports) discovered across
- *          all scanned files.
+ * @returns The absolute paths of every entity source file matched.
  */
-export async function scanEntityPaths(rootDir: string, patterns: string[]): Promise<Set<Function>> {
-  const files = fg.sync(patterns, {
+export async function scanEntityPaths(rootDir: string, patterns: string[]): Promise<string[]> {
+  return fg.sync(patterns, {
     cwd: rootDir,
     absolute: true,
     onlyFiles: true,
   })
-
-  const entities = new Set<Function>()
-  for (const file of files) {
-    const mod = await import(file)
-    for (const key of Object.keys(mod)) {
-      const value = (mod as Record<string, unknown>)[key]
-      if (typeof value === 'function') {
-        entities.add(value as Function)
-      }
-    }
-  }
-  return entities
 }

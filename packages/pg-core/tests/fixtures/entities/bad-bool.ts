@@ -1,4 +1,4 @@
-import { PgEntity, PgKey } from '../../../src/pg'
+import { PgEntity, PgKey } from '../../../src'
 
 // An unparseable BooleanLike string must be rejected by resolvePgEntityRaw.
 @PgEntity({ createTableAuto: 'maybe' })

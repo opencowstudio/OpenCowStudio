@@ -1,4 +1,4 @@
-import { PgEntity, PgKey } from '../../../src/pg'
+import { PgEntity, PgKey } from '../../../src'
 
 // An entity must declare exactly one @PgKey; two must be rejected.
 @PgEntity()

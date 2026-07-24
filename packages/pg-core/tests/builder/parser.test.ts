@@ -1,10 +1,10 @@
 /// <reference types="vite/client" />
 import { describe, it, expect } from 'vitest'
 import { fileURLToPath } from 'node:url'
-import { parsePgEntities } from '../../../src/pg/builder'
-import type { PgEntityRaw } from '../../../src/pg'
+import { parsePgEntities } from '../../src/builder'
+import type { PgEntityRaw } from '../../src'
 
-const entitiesDir = fileURLToPath(new URL('../../fixtures/entities/', import.meta.url))
+const entitiesDir = fileURLToPath(new URL('../fixtures/entities/', import.meta.url))
 const entity = (name: string) => `${entitiesDir}${name}`
 
 /** Parse a single entity fixture file and return its one PgEntityRaw. */

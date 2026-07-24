@@ -1,4 +1,4 @@
-import { PgEntity, PgKey, PgColumn } from '../../../src/pg'
+import { PgEntity, PgKey, PgColumn } from '../../../src'
 
 // BooleanLike options supplied as string literals; resolvePgEntityRaw must
 // coerce them to real booleans.

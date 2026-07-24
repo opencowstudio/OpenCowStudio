@@ -1,4 +1,4 @@
-import { PgEntity, PgKey, PgColumn, PgIndex } from '../../../src/pg'
+import { PgEntity, PgKey, PgColumn, PgIndex } from '../../../src'
 
 @PgEntity({
   table: 'users',

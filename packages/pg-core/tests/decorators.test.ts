@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { describe, it, expect } from 'vitest'
-import { PgEntity, PgKey, PgColumn, PgIndex } from '../../src/pg'
+import { PgEntity, PgKey, PgColumn, PgIndex } from '../src'
 
 describe('Pg decorators — definitions', () => {
   it('should export the four entity decorators as functions', () => {

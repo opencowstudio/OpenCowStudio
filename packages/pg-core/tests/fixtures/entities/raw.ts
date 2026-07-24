@@ -1,4 +1,4 @@
-import { PgEntity, PgKey, PgColumn } from '../../../src/pg'
+import { PgEntity, PgKey, PgColumn } from '../../../src'
 
 // Decorator options supplied as raw literals (string booleans) so the static
 // parser can verify it returns them verbatim, before resolvePgEntityRaw applies

@@ -1,4 +1,4 @@
-import { PgEntity, PgKey } from '../../../src/pg'
+import { PgEntity, PgKey } from '../../../src'
 
 const SCHEMA = 'tenant'
 

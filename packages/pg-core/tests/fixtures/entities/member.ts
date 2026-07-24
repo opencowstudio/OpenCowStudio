@@ -1,4 +1,4 @@
-import { PgEntity, PgKey, PgColumn } from '../../../src/pg'
+import { PgEntity, PgKey, PgColumn } from '../../../src'
 
 @PgEntity({ table: 'members', schema: 'public' })
 export class Member {

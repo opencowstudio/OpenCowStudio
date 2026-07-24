@@ -1,4 +1,4 @@
-import { PgEntity, PgKey, PgIndex } from '../../../src/pg'
+import { PgEntity, PgKey, PgIndex } from '../../../src'
 
 @PgEntity()
 @PgIndex({ columns: ['email'], unique: true })

@@ -36,4 +36,3 @@ export { resolvePgEntityRaw } from './runtime/repository'
 
 // DataSource (connection-pool routing & multi-database registry).
 export { PgDataSource, PgDataSourceManager } from './runtime/datasource'
-export type { PoolLike } from './runtime/datasource'

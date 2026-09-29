@@ -7,23 +7,16 @@ import type {
 } from '../types.ts'
 
 // ---------------------------------------------------------------------------
-// Pool abstraction
+// Pool creation
 //
-// The datasource depends on a minimal `PoolLike` interface rather than the
-// concrete node-postgres `Pool`. Pools are always created through
-// `defaultPoolFactory`, so every node is wired up the same way.
+// Every node is wired up through `defaultPoolFactory`, which builds a real
+// node-postgres `Pool` from the node and pool metadata.
 // ---------------------------------------------------------------------------
-
-/** Minimal pool contract the datasource needs (compatible with pg.Pool). */
-export interface PoolLike {
-  query(text: string, params?: unknown[]): Promise<unknown>
-  end(): Promise<void>
-}
 
 const DEFAULT_PG_PORT = 5432
 
 /** Build a real node-postgres connection pool directly from the node metadata. */
-function defaultPoolFactory(node: PgNodeMetadata, pool: PgPoolMetadata): PoolLike {
+function defaultPoolFactory(node: PgNodeMetadata, pool: PgPoolMetadata): Pool {
   const url = new URL(node.url)
   const port = url.port ? Number(url.port) : DEFAULT_PG_PORT
   const database = url.pathname.replace(/^\/+/, '')
@@ -45,8 +38,8 @@ function defaultPoolFactory(node: PgNodeMetadata, pool: PgPoolMetadata): PoolLik
 // ---------------------------------------------------------------------------
 
 export class PgDataSource {
-  readonly master: PoolLike
-  readonly slaves: PoolLike[]
+  readonly master: Pool
+  readonly slaves: Pool[]
   private slaveCursor = 0
 
   constructor(database: PgDatabaseMetadata, pool: PgPoolMetadata) {

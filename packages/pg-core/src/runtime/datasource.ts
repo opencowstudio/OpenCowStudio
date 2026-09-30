@@ -1,10 +1,14 @@
 import { Pool } from 'pg'
+import { consola } from 'consola'
 import type {
   PgConfigMetadata,
   PgDatabaseMetadata,
   PgNodeMetadata,
   PgPoolMetadata,
 } from '../types.ts'
+
+// Tagged logger so the core stays framework-agnostic (no Nuxt dep).
+const logger = consola.withTag('pg-datasource')
 
 // ---------------------------------------------------------------------------
 // Pool creation
@@ -34,6 +38,27 @@ function defaultPoolFactory(node: PgNodeMetadata, pool: PgPoolMetadata): Pool {
 }
 
 // ---------------------------------------------------------------------------
+// Startup initialization — PostgreSQL extensions
+//
+// An extension is a per-database object, so it is created once on the master
+// node and reaches the read replicas through streaming replication. Creating it
+// on a replica is impossible anyway (replicas are read-only), which is why the
+// bootstrap always talks to the master pool.
+//
+// `CREATE EXTENSION IF NOT EXISTS` is idempotent, so running it on every boot
+// is cheap and safe — it is a no-op once the extension exists.
+// ---------------------------------------------------------------------------
+
+/**
+ * Extensions every datasource creates on its master node at startup.
+ *
+ * `pg_trgm` provides the trigram machinery behind fuzzy text search and the GIN
+ * indexes that make it fast. The list is internal on purpose: it belongs to the
+ * ORM's contract, not to the configuration surface.
+ */
+const REQUIRED_EXTENSIONS: readonly string[] = ['pg_trgm']
+
+// ---------------------------------------------------------------------------
 // PgDataSource — one database (master + read replicas)
 // ---------------------------------------------------------------------------
 
@@ -42,9 +67,41 @@ export class PgDataSource {
   readonly slaves: Pool[]
   private slaveCursor = 0
 
-  constructor(database: PgDatabaseMetadata, pool: PgPoolMetadata) {
+  constructor(database: PgDatabaseMetadata, pool: PgPoolMetadata, dbName = 'default') {
     this.master = defaultPoolFactory(database.master, pool)
     this.slaves = database.slaves.map(s => defaultPoolFactory(s, pool))
+    // Triggered, not awaited: the bootstrap reports its outcome through the
+    // log and nothing here depends on it having finished.
+    void this.createExtensions(dbName)
+  }
+
+  /**
+   * Create {@link REQUIRED_EXTENSIONS} on the master node.
+   *
+   * Fire-and-forget by design: the DDL is triggered at construction time and
+   * its outcome is reported through the log. Missing privileges, an unreachable
+   * master or a missing contrib module are not fatal here — the features that
+   * depend on the extension fail later with their own explicit error.
+   */
+  private async createExtensions(dbName: string): Promise<void> {
+    const names = REQUIRED_EXTENSIONS.join(', ')
+    logger.info(`Database "${dbName}": ensuring PostgreSQL extensions [${names}] on the master ...`)
+
+    try {
+      // Sequential on purpose: one connection, deterministic order, and an
+      // unambiguous log line when one of the statements is rejected.
+      for (const name of REQUIRED_EXTENSIONS) {
+        await this.master.query(`CREATE EXTENSION IF NOT EXISTS "${name}"`)
+      }
+      logger.success(`Database "${dbName}": PostgreSQL extensions ready [${names}]`)
+    } catch (err) {
+      logger.error(
+        `Database "${dbName}": failed to create PostgreSQL extensions [${names}]. ` +
+          'Creating an extension requires superuser (or equivalent) privileges; ' +
+          'features depending on them will fail until it is created manually.',
+        err,
+      )
+    }
   }
 
   /** Write path: always routed to the master. */
@@ -85,8 +142,9 @@ export class PgDataSourceManager {
   constructor(config: PgConfigMetadata, defaultDbName = 'default') {
     this.defaultDbName = defaultDbName
     this.sources = new Map()
+    // Each datasource triggers its own extension bootstrap in the background.
     for (const [dbName, dbConfig] of Object.entries(config.databases)) {
-      this.sources.set(dbName, new PgDataSource(dbConfig, config.pool))
+      this.sources.set(dbName, new PgDataSource(dbConfig, config.pool, dbName))
     }
   }
 

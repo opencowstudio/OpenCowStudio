@@ -46,5 +46,8 @@ export type {
 // Entity operation contract (CRUD).
 export type { PgEntityRepository } from './runtime/repository'
 
+// SQL template catalogue (catalog introspection statements).
+export { DEFAULT_SCHEMA, PgSqlTemplate } from './runtime/sql'
+
 // DataSource (connection-pool routing & multi-database registry).
 export { PgDataSource, PgDataSourceManager } from './runtime/datasource'

@@ -1,5 +1,6 @@
 import { Pool } from 'pg'
 import { consola } from 'consola'
+import { PgSqlTemplate } from './sql'
 import type {
   PgConfigMetadata,
   PgDatabaseMetadata,
@@ -45,18 +46,12 @@ function defaultPoolFactory(node: PgNodeMetadata, pool: PgPoolMetadata): Pool {
 // on a replica is impossible anyway (replicas are read-only), which is why the
 // bootstrap always talks to the master pool.
 //
-// `CREATE EXTENSION IF NOT EXISTS` is idempotent, so running it on every boot
-// is cheap and safe — it is a no-op once the extension exists.
+// `pg_trgm` is the only extension the ORM depends on: it provides the trigram
+// machinery behind fuzzy text search and the GIN indexes that make it fast.
+// Its `CREATE EXTENSION IF NOT EXISTS` statement is idempotent, so running it
+// on every boot is cheap and safe — it is a no-op once the extension exists.
+// The statement itself lives in `PgSqlTemplate` and is never assembled here.
 // ---------------------------------------------------------------------------
-
-/**
- * Extensions every datasource creates on its master node at startup.
- *
- * `pg_trgm` provides the trigram machinery behind fuzzy text search and the GIN
- * indexes that make it fast. The list is internal on purpose: it belongs to the
- * ORM's contract, not to the configuration surface.
- */
-const REQUIRED_EXTENSIONS: readonly string[] = ['pg_trgm']
 
 // ---------------------------------------------------------------------------
 // PgDataSource — one database (master + read replicas)
@@ -76,7 +71,7 @@ export class PgDataSource {
   }
 
   /**
-   * Create {@link REQUIRED_EXTENSIONS} on the master node.
+   * Create the `pg_trgm` extension on the master node.
    *
    * Fire-and-forget by design: the DDL is triggered at construction time and
    * its outcome is reported through the log. Missing privileges, an unreachable
@@ -84,21 +79,18 @@ export class PgDataSource {
    * depend on the extension fail later with their own explicit error.
    */
   private async createExtensions(dbName: string): Promise<void> {
-    const names = REQUIRED_EXTENSIONS.join(', ')
-    logger.info(`Database "${dbName}": ensuring PostgreSQL extensions [${names}] on the master ...`)
+    logger.info(
+      `Database "${dbName}": ensuring the PostgreSQL extension "pg_trgm" on the master ...`,
+    )
 
     try {
-      // Sequential on purpose: one connection, deterministic order, and an
-      // unambiguous log line when one of the statements is rejected.
-      for (const name of REQUIRED_EXTENSIONS) {
-        await this.master.query(`CREATE EXTENSION IF NOT EXISTS "${name}"`)
-      }
-      logger.success(`Database "${dbName}": PostgreSQL extensions ready [${names}]`)
+      await this.master.query(PgSqlTemplate.CREATE_EXTENSION_PG_TRGM)
+      logger.success(`Database "${dbName}": PostgreSQL extension "pg_trgm" ready`)
     } catch (err) {
       logger.error(
-        `Database "${dbName}": failed to create PostgreSQL extensions [${names}]. ` +
+        `Database "${dbName}": failed to create the PostgreSQL extension "pg_trgm". ` +
           'Creating an extension requires superuser (or equivalent) privileges; ' +
-          'features depending on them will fail until it is created manually.',
+          'features depending on it will fail until it is created manually.',
         err,
       )
     }

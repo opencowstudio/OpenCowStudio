@@ -1,8 +1,8 @@
 import { PgEntity, PgKey, PgColumn } from '../../../src'
 
-// Decorator options supplied as raw literals (string booleans) so the static
-// parser can verify it returns them verbatim, before resolvePgEntityRaw applies
-// any normalisation.
+// Decorator options supplied as literals (including string booleans), so the
+// parser can verify it reads them from source and resolves them (defaults,
+// snake_case, BooleanLike coercion).
 @PgEntity({ dbName: 'my_db', schema: 'app', table: 'my_tbl', createTableAuto: 'false' })
 export class RawEntity {
   @PgKey({ generated: 'false' })

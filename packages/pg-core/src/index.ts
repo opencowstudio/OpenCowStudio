@@ -18,11 +18,6 @@
 
 // Entity decorators (static markers). Value-level only; free of `typescript`.
 export { PgEntity, PgKey, PgColumn, PgIndex } from './builder/decorators'
-
-// === shared — the type contract both stages rely on ========================
-
-// Shared primitives, decorator option types, raw parse products, runtime
-// metadata, and configuration metadata types.
 export type {
   BooleanLike,
   PgColumnType,
@@ -30,10 +25,12 @@ export type {
   PgKeyOptions,
   PgColumnOptions,
   PgIndexOptions,
-  PgEntityRaw,
-  PgKeyRaw,
-  PgColumnRaw,
-  PgIndexRaw,
+} from './builder/decorators'
+
+// === shared — the metadata type contract ===================================
+
+// Entity metadata and configuration metadata types.
+export type {
   PgEntityMetadata,
   PgKeyMetadata,
   PgColumnMetadata,
@@ -46,8 +43,7 @@ export type {
 
 // === runtime ===============================================================
 
-// Entity repository: CRUD contract + raw -> validated metadata.
-export { resolvePgEntityRaw } from './runtime/repository'
+// Entity operation contract (CRUD).
 export type { PgEntityRepository } from './runtime/repository'
 
 // DataSource (connection-pool routing & multi-database registry).

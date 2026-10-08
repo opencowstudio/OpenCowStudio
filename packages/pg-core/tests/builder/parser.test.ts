@@ -2,43 +2,71 @@
 import { describe, it, expect } from 'vitest'
 import { fileURLToPath } from 'node:url'
 import { parsePgEntities } from '../../src/builder'
-import type { PgEntityRaw } from '../../src'
+import type { PgEntityMetadata } from '../../src'
 
 const entitiesDir = fileURLToPath(new URL('../fixtures/entities/', import.meta.url))
 const entity = (name: string) => `${entitiesDir}${name}`
 
-/** Parse a single entity fixture file and return its one PgEntityRaw. */
-function parseOne(name: string): PgEntityRaw {
-  const raws = parsePgEntities([entity(name)])
-  if (raws.length !== 1) {
-    throw new Error(`expected exactly one entity in ${name}, got ${raws.length}`)
+/** Parse a single entity fixture file and return its one PgEntityMetadata. */
+function parseOne(name: string): PgEntityMetadata {
+  const metas = parsePgEntities([entity(name)])
+  if (metas.length !== 1) {
+    throw new Error(`expected exactly one entity in ${name}, got ${metas.length}`)
   }
-  return raws[0]!
+  return metas[0]!
 }
 
-describe('builder parser — parsePgEntities (verbatim raw, no defaults)', () => {
-  it('should return the decorator options verbatim (no defaults, no conversion)', () => {
-    const raw = parseOne('raw.ts')
-    expect(raw.className).toBe('RawEntity')
-    // string booleans are preserved exactly as supplied
-    expect(raw.options.createTableAuto).toBe('false')
-    expect(raw.options.dbName).toBe('my_db')
-    expect(raw.options.schema).toBe('app')
-    expect(raw.options.table).toBe('my_tbl')
-    expect(raw.key).toMatchObject({ propertyKey: 'id', options: { generated: 'false' } })
-    expect(raw.columns).toHaveLength(1)
-    expect(raw.columns[0]).toMatchObject({
-      propertyKey: 'name',
-      options: { columnType: 'TEXT', comment: 'a comment' },
-    })
+describe('builder parser — parsePgEntities (resolution)', () => {
+  it('should read the decorator options from source and resolve them', () => {
+    const meta = parseOne('raw.ts')
+    expect(meta.dbName).toBe('my_db')
+    expect(meta.schema).toBe('app')
+    expect(meta.table).toBe('my_tbl')
+    // the string boolean 'false' is coerced to a real boolean
+    expect(meta.createTableAuto).toBe(false)
+    // omitted booleans fall back to their defaults
+    expect(meta.addColumnAuto).toBe(true)
+    expect(meta.createIndexAuto).toBe(true)
+    expect(meta.key).toEqual({ propertyKey: 'id', column: 'id', generated: false, comment: '' })
+    expect(meta.columns).toEqual([
+      { propertyKey: 'name', column: 'name', comment: 'a comment', columnType: 'TEXT' },
+    ])
   })
 
-  it('should parse @PgIndex decorators into the indexes array (nested array/object)', () => {
-    const raw = parseOne('indexed.ts')
-    expect(raw.indexes).toHaveLength(1)
-    expect(raw.indexes[0]).toMatchObject({
-      options: { columns: ['email'], unique: true },
-    })
+  it('should normalise string booleans on every entity option', () => {
+    const meta = parseOne('bool-entity.ts')
+    expect(meta.createTableAuto).toBe(false)
+    expect(meta.addColumnAuto).toBe(false)
+    expect(meta.createIndexAuto).toBe(true)
+    expect(meta.key.generated).toBe(false)
+  })
+
+  it('should fill defaults when boolean options are omitted', () => {
+    const meta = parseOne('default-bool.ts')
+    expect(meta.createTableAuto).toBe(true)
+    expect(meta.addColumnAuto).toBe(true)
+    expect(meta.createIndexAuto).toBe(true)
+    expect(meta.key.generated).toBe(true)
+  })
+
+  it('should derive the default table and column names in snake_case', () => {
+    const meta = parseOne('snake-case.ts')
+    expect(meta.dbName).toBe('default')
+    expect(meta.schema).toBe('public')
+    expect(meta.table).toBe('snake_case')
+    expect(meta.key.column).toBe('user_id')
+    expect(meta.columns.map(c => c.column).sort()).toEqual([
+      'display_name',
+      'first_name',
+      'http_status_code',
+      'last_name',
+      'user_id',
+    ])
+  })
+
+  it('should resolve @PgIndex declarations into index metadata', () => {
+    const meta = parseOne('indexed.ts')
+    expect(meta.indexes).toEqual([{ columns: ['email'], unique: true }])
   })
 
   it('should return an empty array for a class without @PgEntity', () => {
@@ -54,35 +82,41 @@ describe('builder parser — parsePgEntities (verbatim raw, no defaults)', () =>
   })
 
   it('should resolve a locally-declared const referenced from a decorator', () => {
-    const raw = parseOne('const-ref.ts')
-    expect(raw.options.schema).toBe('tenant')
+    expect(parseOne('const-ref.ts').schema).toBe('tenant')
+  })
+
+  it('should reject an unparseable BooleanLike string', () => {
+    expect(() => parsePgEntities([entity('bad-bool.ts')])).toThrow(/Invalid boolean value/)
   })
 })
 
 describe('builder parser — parsePgEntities (filesystem Program)', () => {
-  it('should parse the User entity fixture into a PgEntityRaw', () => {
-    const raws = parsePgEntities([entity('user.ts')])
-    expect(raws).toHaveLength(1)
-    const raw = raws[0]!
-    expect(raw.className).toBe('User')
-    expect(raw.options.table).toBe('users')
-    expect(raw.options.schema).toBe('public')
-    expect(raw.key).toMatchObject({ propertyKey: 'id', options: { generated: false } })
-    const columnNames = raw.columns.map(c => String(c.propertyKey)).sort()
-    expect(columnNames).toEqual(['createdAt', 'displayName', 'email'])
-    // indexes are declared via @PgIndex, not @PgEntity
-    expect(raw.indexes).toEqual([{ options: { columns: ['email'], unique: true } }])
+  it('should resolve the User entity fixture into metadata', () => {
+    const metas = parsePgEntities([entity('user.ts')])
+    expect(metas).toHaveLength(1)
+    const meta = metas[0]!
+    expect(meta.table).toBe('users')
+    expect(meta.schema).toBe('public')
+    expect(meta.comment).toBe('Application users')
+    expect(meta.key).toEqual({ propertyKey: 'id', column: 'id', generated: false, comment: '' })
+    expect(meta.columns.map(c => c.propertyKey).sort()).toEqual(['createdAt', 'displayName', 'email'])
+    expect(meta.indexes).toEqual([{ columns: ['email'], unique: true }])
   })
 
   it('should parse multiple entity files at once', () => {
-    const raws = parsePgEntities([
+    const metas = parsePgEntities([
       entity('user.ts'),
       entity('article.ts'),
       entity('product.ts'),
       entity('member.ts'),
       entity('snake-case.ts'),
     ])
-    const classNames = raws.map(r => r.className).sort()
-    expect(classNames).toEqual(['Article', 'Member', 'Product', 'SnakeCase', 'User'])
+    expect(metas.map(m => m.table).sort()).toEqual([
+      'article',
+      'members',
+      'product',
+      'snake_case',
+      'users',
+    ])
   })
 })

@@ -20,9 +20,10 @@ export async function setupModule(options: ModuleOptions, nuxt: Nuxt): Promise<v
 
   const resolver = createResolver(import.meta.url)
 
-  // Scan the configured entity paths, convert each entity into a PgEntityRaw,
-  // and bake the collection into a server-only manifest at build time. The
-  // runtime can later parse the JSON string back into entity metadata.
+  // Scan the configured entity paths, resolve each entity into a
+  // PgEntityMetadata, and bake the collection into a server-only manifest at
+  // build time. The runtime can later parse the JSON string back into entity
+  // metadata.
   await registerPgEntityManifest(nuxt, options.entityPaths!)
 
   // Locate, read and serialize the pg config file into a server-only manifest

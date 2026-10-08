@@ -13,7 +13,7 @@ declare module '#pg-entities-manifest' {
   /**
    * Formatted JSON string of the scanned entity collection, or an empty array
    * when no entities were found at build time. The runtime parses this back
-   * into an array of `PgEntityRaw` objects.
+   * into an array of `PgEntityMetadata` objects.
    */
   export const pgEntitiesJson: string
 }

@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { addTemplate, useLogger } from '@nuxt/kit'
 import type { Nuxt } from 'nuxt/schema'
 import { parsePgEntities } from '@opencowstudio/pg-core/builder'
-import type { PgEntityRaw } from '@opencowstudio/pg-core'
+import type { PgEntityMetadata } from '@opencowstudio/pg-core'
 import { findPgConfigFile, scanEntityPaths } from './scanner'
 import { readPgConfigNamespace } from './yaml'
 
@@ -67,9 +67,9 @@ export function registerPgManifest(nuxt: Nuxt, configFile: string): string {
 }
 
 /**
- * Scan the configured entity paths, convert every discovered entity class into
- * a `PgEntityRaw` by parsing its decorators statically (no module import, no
- * class instantiation), serialize the collection to a formatted JSON string,
+ * Scan the configured entity paths, resolve every discovered entity class into
+ * a `PgEntityMetadata` by parsing its decorators statically (no module import,
+ * no class instantiation), serialize the collection to a formatted JSON string,
  * and bake that string into a server-only manifest at build time.
  *
  * Build-time only — this helper must never be imported from the runtime.
@@ -83,15 +83,15 @@ export async function registerPgEntityManifest(nuxt: Nuxt, entityPaths: string[]
   const files = await scanEntityPaths(nuxt.options.rootDir, entityPaths)
   logger.info(`Scanned ${files.length} entity file(s) from entity paths`)
 
-  // Parse each entity class statically (via the TypeScript compiler API) into
-  // its raw decorator metadata. Files that fail to parse are skipped with a
-  // warning so a single bad entity does not abort the whole build.
-  const entityRaws: PgEntityRaw[] = parsePgEntities(files, { skipInvalid: true })
-  for (const raw of entityRaws) {
-    logger.info(`Converted entity "${raw.className}" to PgEntityRaw`)
+  // Resolve each entity class statically (via the TypeScript compiler API) into
+  // its validated metadata. Files that fail to parse are skipped with a warning
+  // so a single bad entity does not abort the whole build.
+  const entities: PgEntityMetadata[] = parsePgEntities(files, { skipInvalid: true })
+  for (const entity of entities) {
+    logger.info(`Resolved entity table "${entity.table}"`)
   }
 
-  const pgEntitiesJson = JSON.stringify(entityRaws, null, 2)
+  const pgEntitiesJson = JSON.stringify(entities, null, 2)
   logger.info(`Pg entities JSON:\n${pgEntitiesJson}`)
 
   const manifest = addTemplate({

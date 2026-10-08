@@ -60,9 +60,9 @@ describe('registerPgEntityManifest', () => {
     const opts = (addTemplate as ReturnType<typeof vi.fn>).mock.calls[0]![0]
     const contents = opts.getContents()
     expect(contents).toContain('export const pgEntitiesJson')
-    // The embedded JSON string carries the entity's raw decorator metadata.
-    expect(contents).toContain('className')
-    expect(contents).toContain('User')
+    // The embedded JSON string carries the entity's resolved metadata.
+    expect(contents).toContain('dbName')
+    expect(contents).toContain('columns')
     expect(contents).toContain('users')
   })
 

@@ -1,8 +1,9 @@
 // ---------------------------------------------------------------------------
 // PostgreSQL — builder subpath exports (build-time only)
 //
-// This entry pulls in `typescript` via the parser. Runtime-only consumers
-// MUST NOT import from here; use the package root (`@opencowstudio/pg-core`).
+// This entry pulls in `typescript` via the parser. Runtime-only consumers MUST
+// NOT import from here; use the package root (`@opencowstudio/pg-core`), which
+// only reaches `decorators.ts` inside this layer.
 // ---------------------------------------------------------------------------
 
 export {
@@ -13,12 +14,15 @@ export {
   parsePgKey,
   parsePgColumn,
   parseIndexDecorators,
-  parsePgEntityRaw,
+  parsePgEntity,
   parsePgEntities,
 } from './parser'
 export type {
   ParseProgramOptions,
   ParsedPropertyDecorators,
+  ParsedKeyField,
+  ParsedColumnField,
+  ParsedIndexDecl,
   LiteralValue,
   EntityClassNode,
 } from './parser'

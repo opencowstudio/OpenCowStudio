@@ -9,13 +9,14 @@ This package contains everything that does **not** depend on Nuxt.
 The source is split by lifecycle stage, and dependencies flow one way only:
 `builder/ -> shared/ <- runtime/`.
 
-- `shared/` — the pure type contract both stages rely on (`types.ts` only; no
-  `typescript`, no `pg`).
-- `builder/` — the decorator markers (`builder/decorators.ts`) plus the
-  build-time parser (`builder/parser.ts`, the only place that imports the
-  TypeScript compiler API); exposed as `@opencowstudio/pg-core/builder`.
+- `shared/` — the metadata type contract (`types.ts` only; no `typescript`, no
+  `pg`).
+- `builder/` — the decorator markers + their option types
+  (`builder/decorators.ts`) and the build-time parser/resolver
+  (`builder/parser.ts`, the only place that imports the TypeScript compiler API);
+  exposed as `@opencowstudio/pg-core/builder`.
 - `runtime/` — runtime only; the only place that imports `pg`. It also owns the
-  entity operation contract and the metadata resolution.
+  entity operation contract.
 
 The runtime entry (`@opencowstudio/pg-core`) re-exports `shared/`, `runtime/` and
 exactly one file inside `builder/` (`decorators.ts`, which carries no
@@ -25,24 +26,22 @@ out of the runtime bundle. These rules are enforced by
 
 ## What it provides
 
-- `@PgEntity` / `@PgKey` / `@PgColumn` / `@PgIndex` decorators (static markers).
-  Every type they and the metadata pipeline rely on — the shared `BooleanLike` /
-  `PgColumnType` primitives, the decorator *option* types (`PgEntityOptions`,
-  `PgKeyOptions`, `PgColumnOptions`, `PgIndexOptions`) and the raw/metadata
-  shapes — lives in `shared/types.ts`.
-- A two-stage metadata pipeline:
-  - **builder** (`builder/parser.ts`): `parsePgEntities` statically reads the
-    decorator source via the TypeScript compiler API into a `PgEntityRaw`
-    (verbatim — no defaults, no validation).
-  - **runtime** (`runtime/repository.ts`): `resolvePgEntityRaw` validates,
-    defaults and normalises the `PgEntityRaw` into a `PgEntityMetadata`.
+- `@PgEntity` / `@PgKey` / `@PgColumn` / `@PgIndex` decorators (static markers)
+  and their option types (`PgEntityOptions`, `PgKeyOptions`, `PgColumnOptions`,
+  `PgIndexOptions`) plus the shared `BooleanLike` / `PgColumnType` primitives, in
+  `builder/decorators.ts`. The raw/metadata shapes live in `shared/types.ts`.
+- A build-time metadata pipeline (`builder/parser.ts`, exported from
+  `@opencowstudio/pg-core/builder`): `parsePgEntity` / `parsePgEntities`
+  statically read the decorator *source* via the TypeScript compiler API and
+  return fully-resolved `PgEntityMetadata` — identifiers validated, defaults
+  applied, BooleanLike strings coerced.
 - Typed datasource configuration metadata (`PgConfigMetadata`).
 - Connection-pool routing & multi-database registry
   (`runtime/datasource.ts`: `PgDataSource`, `PgDataSourceManager`).
 - The entity operation contract (`runtime/repository.ts`):
-  `PgEntityRepository<T, K>`
-  with the `insert` / `update` / `delete` / `findById` surface, where `K` is the
-  primary-key value type and the key property is `id`.
+  `PgEntityRepository<T, K>` with the `insert` / `update` / `delete` /
+  `findById` surface, where `K` is the primary-key value type and the key
+  property is `id`.
 
 Id-generation utilities (`generateGuid`, `generateId`) are re-exported from
 [`@opencowstudio/core`](../core) so they can be shared across packages.

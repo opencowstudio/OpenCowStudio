@@ -1,6 +1,6 @@
 import { PgEntity, PgKey, PgColumn } from '../../../src'
 
-// BooleanLike options supplied as string literals; resolvePgEntityRaw must
+// BooleanLike options supplied as string literals; parsePgEntity must
 // coerce them to real booleans.
 @PgEntity({ createTableAuto: 'false', addColumnAuto: '0', createIndexAuto: 'true' })
 export class BoolEntity {

@@ -2,21 +2,23 @@ import ts from 'typescript'
 import { normalize } from 'node:path'
 import { consola } from 'consola'
 import type {
+  BooleanLike,
   PgColumnOptions,
-  PgColumnRaw,
+  PgColumnType,
   PgEntityOptions,
-  PgEntityRaw,
   PgIndexOptions,
-  PgIndexRaw,
   PgKeyOptions,
-  PgKeyRaw,
+} from './decorators.ts'
+import type {
+  PgEntityMetadata,
+  PgKeyMetadata,
 } from '../shared/types.ts'
 
 // Tagged logger so the core stays framework-agnostic (no Nuxt dep).
 const logger = consola.withTag('pg-parser')
 
 // ---------------------------------------------------------------------------
-// Static decorator parser (builder)
+// Static decorator parser + metadata resolver (builder)
 //
 // This module parses entity decorator *source* with the TypeScript compiler
 // API — no module import, no class instantiation. The flow mirrors the
@@ -29,11 +31,15 @@ const logger = consola.withTag('pg-parser')
 //   5. parsePgKey               — extract a single @PgKey's options
 //   6. parsePgColumn            — extract a single @PgColumn's options
 //   7. parseIndexDecorators     — read every @PgIndex(...) on the class
-//   8. parsePgEntityRaw         — assemble the PgEntityRaw for one class
+//   8. parsePgEntity            — assemble + resolve one class into metadata
 //
 // A literal evaluator turns the decorator call arguments (object / array /
 // string / number / boolean / null / simple identifier references) into plain
 // JavaScript values.
+//
+// Steps 1–7 read the decorator source verbatim; step 8 is where correctness is
+// enforced — identifiers validated, defaults filled in and BooleanLike strings
+// coerced — producing a fully-resolved `PgEntityMetadata`.
 // ---------------------------------------------------------------------------
 
 /** Options controlling program creation and parsing behaviour. */
@@ -126,12 +132,34 @@ export function parseClassDecorator(
 
 // === Step 4 — parse property decorators (@PgKey / @PgColumn) ============
 
+/** A parsed `@PgKey` field: its property name plus the parsed decorator options. */
+export interface ParsedKeyField {
+  /** the property name on the class */
+  propertyKey: string
+  /** the options read from the `@PgKey(...)` call */
+  options: PgKeyOptions
+}
+
+/** A parsed `@PgColumn` field: its property name plus the parsed decorator options. */
+export interface ParsedColumnField {
+  /** the property name on the class */
+  propertyKey: string
+  /** the options read from the `@PgColumn(...)` call */
+  options: PgColumnOptions
+}
+
+/** A parsed `@PgIndex` declaration: the options read from its call. */
+export interface ParsedIndexDecl {
+  /** the options read from the `@PgIndex(...)` call */
+  options: PgIndexOptions
+}
+
 /** Result of parsing a class's property decorators. */
 export interface ParsedPropertyDecorators {
   /** the single @PgKey field (exactly one allowed) */
-  key?: PgKeyRaw
+  key?: ParsedKeyField
   /** every @PgColumn field */
-  columns: PgColumnRaw[]
+  columns: ParsedColumnField[]
 }
 
 /**
@@ -174,13 +202,13 @@ export function parsePropertyDecorators(
 // === Step 5 — parse PgKey ===============================================
 
 /**
- * Parse a single `@PgKey(...)` decorator into a `PgKeyRaw`.
+ * Parse a single `@PgKey(...)` decorator into a {@link ParsedKeyField}.
  */
 export function parsePgKey(
   decorator: ts.Decorator,
   propertyKey: string,
   sourceFile: ts.SourceFile,
-): PgKeyRaw {
+): ParsedKeyField {
   const options = parseOptionsArgument<PgKeyOptions>(decorator, sourceFile, 'PgKey')
   return { propertyKey, options }
 }
@@ -188,13 +216,13 @@ export function parsePgKey(
 // === Step 6 — parse PgColumn ============================================
 
 /**
- * Parse a single `@PgColumn(...)` decorator into a `PgColumnRaw`.
+ * Parse a single `@PgColumn(...)` decorator into a {@link ParsedColumnField}.
  */
 export function parsePgColumn(
   decorator: ts.Decorator,
   propertyKey: string,
   sourceFile: ts.SourceFile,
-): PgColumnRaw {
+): ParsedColumnField {
   const options = parseOptionsArgument<PgColumnOptions>(decorator, sourceFile, 'PgColumn')
   return { propertyKey, options }
 }
@@ -202,7 +230,8 @@ export function parsePgColumn(
 // === Step 7 — parse @PgIndex decorators ==================================
 
 /**
- * Parse every `@PgIndex(...)` decorator declared on a class into a `PgIndexRaw`.
+ * Parse every `@PgIndex(...)` decorator declared on a class into a
+ * {@link ParsedIndexDecl}.
  *
  * Multiple `@PgIndex` decorators may be applied to the same class; each becomes
  * one entry in the returned array (in declaration order).
@@ -210,30 +239,31 @@ export function parsePgColumn(
 export function parseIndexDecorators(
   node: ts.ClassDeclaration,
   sourceFile: ts.SourceFile,
-): PgIndexRaw[] {
+): ParsedIndexDecl[] {
   const decorators = getDecorators(node, 'PgIndex')
   return decorators.map(decorator => ({
     options: parseOptionsArgument<PgIndexOptions>(decorator, sourceFile, 'PgIndex'),
   }))
 }
 
-// === Step 8 — assemble PgEntityRaw =======================================
+// === Step 8 — assemble + resolve PgEntityMetadata ========================
 
 /**
- * Build the unmodified `PgEntityRaw` for a single `@PgEntity` class declaration.
+ * Build the fully-resolved `PgEntityMetadata` for a single `@PgEntity` class
+ * declaration.
  *
  * Returns `undefined` when the class is not decorated with `@PgEntity` (so it
  * can be called defensively while walking the tree). Throws when the class
  * declares no `@PgKey` field, because an entity must declare exactly one.
  *
- * This performs NO transformation: defaults are not applied, identifiers are
- * not validated, and BooleanLike strings are not coerced — that all lives in
- * `runtime/repository.ts`.
+ * This is where correctness is enforced: identifiers are validated, missing
+ * values get their defaults, and BooleanLike strings are coerced to real
+ * booleans. Diagnostic messages are logged before throwing.
  */
-export function parsePgEntityRaw(
+export function parsePgEntity(
   node: ts.ClassDeclaration,
   sourceFile: ts.SourceFile,
-): PgEntityRaw | undefined {
+): PgEntityMetadata | undefined {
   const entityDecorator = getDecorator(node, 'PgEntity')
   if (!node.name || !entityDecorator) return undefined
 
@@ -248,34 +278,102 @@ export function parsePgEntityRaw(
     throw new Error(message)
   }
 
-  return { className, options, key, columns, indexes }
+  // --- entity-level identifiers & defaults ---
+  const dbName = options.dbName?.trim() ? options.dbName : 'default'
+  const schema = options.schema?.trim() ? options.schema : 'public'
+  const table = options.table?.trim() ? options.table : toSnakeCase(className)
+
+  assertValidIdentifier(dbName, 'dbName', `entity ${className}`)
+  assertValidIdentifier(schema, 'schema', `entity ${className}`)
+  assertValidIdentifier(table, 'table', `entity ${className}`)
+  for (const index of indexes) {
+    for (const col of index.options.columns) {
+      assertValidIdentifier(
+        col,
+        'index column',
+        `entity ${className} index [${index.options.columns.join(', ')}]`,
+      )
+    }
+  }
+
+  const resolvedIndexes = indexes.map((index) => {
+    const ctx = `entity ${className} index [${index.options.columns.join(', ')}]`
+    return {
+      columns: index.options.columns,
+      unique: toBoolean(index.options.unique, false, `${ctx}.unique`),
+    }
+  })
+
+  const createTableAuto = toBoolean(options.createTableAuto, true, `entity ${className}.createTableAuto`)
+  const addColumnAuto = toBoolean(options.addColumnAuto, true, `entity ${className}.addColumnAuto`)
+  const createIndexAuto = toBoolean(options.createIndexAuto, true, `entity ${className}.createIndexAuto`)
+
+  // --- key field ---
+  const keyMetadata: PgKeyMetadata = (() => {
+    const propertyKey = key.propertyKey
+    const column = key.options.column?.trim() ? key.options.column : toSnakeCase(propertyKey)
+    assertValidIdentifier(column, 'column', `key ${propertyKey} on ${className}`)
+    return {
+      propertyKey,
+      column,
+      generated: toBoolean(key.options.generated, true, `key ${propertyKey}.generated on ${className}`),
+      comment: key.options.comment ?? '',
+    }
+  })()
+
+  // --- column fields ---
+  const columnMetadata = columns.map((c) => {
+    const propertyKey = c.propertyKey
+    const column = c.options.column?.trim() ? c.options.column : toSnakeCase(propertyKey)
+    assertValidIdentifier(column, 'column', `column ${propertyKey} on ${className}`)
+    const columnType = resolveColumnType(c.options.columnType, `column ${propertyKey} on ${className}`)
+    return {
+      propertyKey,
+      column,
+      comment: c.options.comment ?? '',
+      columnType,
+    }
+  })
+
+  return {
+    dbName,
+    schema,
+    table,
+    comment: options.comment ?? '',
+    createTableAuto,
+    addColumnAuto,
+    createIndexAuto,
+    indexes: resolvedIndexes,
+    key: keyMetadata,
+    columns: columnMetadata,
+  }
 }
 
 // === Top-level orchestrator ============================================
 
 /**
  * Build a Program from `rootNames`, find every `@PgEntity` class, and return
- * their `PgEntityRaw` in declaration order.
+ * their resolved `PgEntityMetadata` in declaration order.
  */
 export function parsePgEntities(
   rootNames: string[],
   options: ParseProgramOptions = {},
-): PgEntityRaw[] {
+): PgEntityMetadata[] {
   const program = createProgram(rootNames, options) // Step 1
   const classes = findEntityClassDeclarations(program, rootNames) // Step 2
 
-  const result: PgEntityRaw[] = []
+  const result: PgEntityMetadata[] = []
   for (const { node, sourceFile } of classes) {
     if (options.skipInvalid) {
       try {
-        const raw = parsePgEntityRaw(node, sourceFile) // Steps 3–8
-        if (raw) result.push(raw)
+        const metadata = parsePgEntity(node, sourceFile) // Steps 3–8
+        if (metadata) result.push(metadata)
       } catch (err) {
         logger.warn(`Skipping entity "${node.name?.text ?? 'anonymous'}": ${String(err)}`)
       }
     } else {
-      const raw = parsePgEntityRaw(node, sourceFile) // Steps 3–8
-      if (raw) result.push(raw)
+      const metadata = parsePgEntity(node, sourceFile) // Steps 3–8
+      if (metadata) result.push(metadata)
     }
   }
   return result
@@ -486,4 +584,80 @@ function propertyNameFrom(name: ts.PropertyName, sourceFile: ts.SourceFile): str
 function positionText(node: ts.Node, sourceFile: ts.SourceFile): string {
   const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile))
   return `${sourceFile.fileName}:${line + 1}:${character + 1}`
+}
+
+// === Resolution helpers (used by parsePgEntity) ============================
+
+/** Convert a string (typically a field name) to snake_case. */
+function toSnakeCase(name: string): string {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
+    .replace(/[\s-]+/g, '_')
+    .toLowerCase()
+}
+
+/** Allowed pattern for PostgreSQL identifiers: alphanumeric and underscore. */
+const IDENTIFIER_RE = /^[a-zA-Z0-9_]+$/
+
+/**
+ * Validate that `value` is a legal PostgreSQL identifier.
+ *
+ * Throws an Error (with detailed context) and logs to stderr when invalid.
+ */
+function assertValidIdentifier(value: string, kind: string, context: string): void {
+  if (!IDENTIFIER_RE.test(value)) {
+    const message = `Invalid ${kind} "${value}": must match ${IDENTIFIER_RE} (alphanumeric and underscore only). Context: ${context}`
+    logger.error(message)
+    throw new Error(message)
+  }
+}
+
+/** Allowed logical SQL column types. */
+const COLUMN_TYPES: ReadonlySet<string> = new Set<PgColumnType>([
+  'BIGINT',
+  'DOUBLE',
+  'BOOLEAN',
+  'JSON_OBJECT',
+  'JSON_ARRAY',
+  'TEXT',
+  'DATE',
+])
+
+/**
+ * Validate and normalise a declared column type.
+ *
+ * Throws an Error (with detailed context) and logs to stderr when the value
+ * is missing or not one of the allowed column types.
+ */
+function resolveColumnType(value: PgColumnType | undefined, context: string): PgColumnType {
+  if (value === undefined) {
+    const message = `Missing required columnType for ${context}. Expected one of: ${[...COLUMN_TYPES].join(', ')}.`
+    logger.error(message)
+    throw new Error(message)
+  }
+  if (!COLUMN_TYPES.has(value)) {
+    const message = `Invalid columnType "${value}" for ${context}. Expected one of: ${[...COLUMN_TYPES].join(', ')}.`
+    logger.error(message)
+    throw new Error(message)
+  }
+  return value
+}
+
+/**
+ * Normalise a `BooleanLike` value to a boolean.
+ *
+ * `undefined` falls back to `fallback`. Real booleans pass through. Strings
+ * `'true'`/`'1'` become `true`; `'false'`/`'0'` become `false`. Any other
+ * string is rejected (logged + thrown) because the raw value is invalid.
+ */
+function toBoolean(value: BooleanLike | undefined, fallback: boolean, context: string): boolean {
+  if (value === undefined) return fallback
+  if (typeof value === 'boolean') return value
+  const normalised = value.trim().toLowerCase()
+  if (normalised === 'true' || normalised === '1') return true
+  if (normalised === 'false' || normalised === '0') return false
+  const message = `Invalid boolean value "${value}" for ${context}: expected true/false or the strings "true"/"false".`
+  logger.error(message)
+  throw new Error(message)
 }

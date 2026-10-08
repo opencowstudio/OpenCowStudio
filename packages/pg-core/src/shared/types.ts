@@ -1,32 +1,98 @@
 // ---------------------------------------------------------------------------
 // PostgreSQL metadata — type definitions
 //
-// This module holds ONLY type definitions for pg-core, split into two stages:
+// This module holds ONLY type definitions for pg-core: the shared option
+// primitives, the decorator option types, and the two-stage entity metadata.
 //
-//   * Raw parse products  — `PgEntityRaw` / `PgKeyRaw` / `PgColumnRaw` /
+//   * Shared primitives  — `BooleanLike` / `PgColumnType`: the value shapes the
+//     decorator options accept.
+//
+//   * Decorator options  — `PgEntityOptions` / `PgKeyOptions` /
+//     `PgColumnOptions` / `PgIndexOptions`: what the decorators accept. The
+//     decorator *functions* live in `decorators.ts` and import these
+//     (type-only), so the dependency stays one-way.
+//
+//   * Raw parse products — `PgEntityRaw` / `PgKeyRaw` / `PgColumnRaw` /
 //     `PgIndexRaw`: the *unmodified* decorator input captured by the builder
 //     parser (`builder/parser.ts`) for a single entity class. No defaults are
 //     applied, no identifiers validated, no BooleanLike strings normalised.
 //
-//   * Runtime metadata    — `PgEntityMetadata` / `PgKeyMetadata` /
+//   * Runtime metadata   — `PgEntityMetadata` / `PgKeyMetadata` /
 //     `PgColumnMetadata` / `PgIndexMetadata`: the validated, defaulted and
 //     normalised form produced by `runtime/repository.ts`.
-//
-// The decorator *option* types (`PgEntityOptions`, …) and the shared
-// `BooleanLike` / `PgColumnType` primitives live in `decorators.ts` and are
-// re-imported here so the raw/metadata shapes can reference them.
 //
 // Configuration metadata (`PgConfigMetadata`, …) describes the datasource
 // definition and is independent of the entity pipeline.
 // ---------------------------------------------------------------------------
 
-import type {
-  PgColumnType,
-  PgColumnOptions,
-  PgEntityOptions,
-  PgIndexOptions,
-  PgKeyOptions,
-} from './decorators.ts'
+// === Shared option primitives ==============================================
+
+/**
+ * A value that may be provided either as a real boolean or as a string that
+ * resolves to a boolean (e.g. 'true' / 'false' / '1' / '0'). String forms are
+ * accepted so configuration sources that only yield strings (env vars, YAML,
+ * JSON) can still drive boolean options. The string is normalised to a boolean
+ * during metadata resolution (see `runtime/repository.ts`).
+ */
+export type BooleanLike = boolean | string
+
+/** Logical SQL column types. */
+export type PgColumnType =
+  | 'BIGINT'
+  | 'DOUBLE'
+  | 'BOOLEAN'
+  | 'JSON_OBJECT'
+  | 'JSON_ARRAY'
+  | 'TEXT'
+  | 'DATE'
+
+// === Decorator option types ================================================
+
+/** Options for @PgKey decorator */
+export interface PgKeyOptions {
+  /** column name in database, default '' (derived from property name) */
+  column?: string
+  /** whether the key is auto-generated (e.g. SERIAL / GENERATED ALWAYS), default true; accepts boolean or string */
+  generated?: BooleanLike
+  /** column comment, default '' */
+  comment?: string
+}
+
+/** Options for @PgColumn decorator */
+export interface PgColumnOptions {
+  /** column name in database, default '' (derived from property name) */
+  column?: string
+  /** column comment, default '' */
+  comment?: string
+  /** logical SQL column type; must be declared on every column field */
+  columnType?: PgColumnType
+}
+
+/** Options for @PgIndex decorator (applied on the entity class) */
+export interface PgIndexOptions {
+  /** list of column names that form the index */
+  columns: string[]
+  /** whether the index is unique, default false; accepts boolean or string */
+  unique?: BooleanLike
+}
+
+/** Options for @PgEntity decorator */
+export interface PgEntityOptions {
+  /** automatically create the table if it does not exist, default true; accepts boolean or string */
+  createTableAuto?: BooleanLike
+  /** automatically add new columns not present in the database, default true; accepts boolean or string */
+  addColumnAuto?: BooleanLike
+  /** automatically create indexes defined via @PgIndex, default true; accepts boolean or string */
+  createIndexAuto?: BooleanLike
+  /** database name, default '' (uses default connection db) */
+  dbName?: string
+  /** schema name, default 'public' */
+  schema?: string
+  /** table name in database, default snake_case of the class name */
+  table?: string
+  /** table comment, default '' */
+  comment?: string
+}
 
 // === Raw parse products ====================================================
 

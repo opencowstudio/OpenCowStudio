@@ -3,16 +3,14 @@ import { normalize } from 'node:path'
 import { consola } from 'consola'
 import type {
   PgColumnOptions,
-  PgEntityOptions,
-  PgIndexOptions,
-  PgKeyOptions,
-} from '../decorators.ts'
-import type {
   PgColumnRaw,
+  PgEntityOptions,
   PgEntityRaw,
+  PgIndexOptions,
   PgIndexRaw,
+  PgKeyOptions,
   PgKeyRaw,
-} from '../types.ts'
+} from '../shared/types.ts'
 
 // Tagged logger so the core stays framework-agnostic (no Nuxt dep).
 const logger = consola.withTag('pg-parser')

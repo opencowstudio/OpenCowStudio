@@ -1,4 +1,10 @@
 import { consola } from 'consola'
+import type {
+  PgColumnOptions,
+  PgEntityOptions,
+  PgIndexOptions,
+  PgKeyOptions,
+} from '../shared/types.ts'
 
 // ---------------------------------------------------------------------------
 // Entity decorators
@@ -9,85 +15,21 @@ import { consola } from 'consola'
 // parser (`builder/parser.ts`) straight from the decorator *source*, so no class
 // is ever instantiated during scanning.
 //
-// This module also owns the decorator *option* types (`PgEntityOptions`,
-// `PgKeyOptions`, `PgColumnOptions`, `PgIndexOptions`) plus the shared
-// `BooleanLike` / `PgColumnType` primitives they rely on. The raw parse
-// products (`PgEntityRaw`, …) and the resolved runtime metadata
-// (`PgEntityMetadata`, …) live in `types.ts`; the raw → metadata resolution
-// lives in `runtime/repository.ts`.
+// The decorator *option* types (`PgEntityOptions`, `PgKeyOptions`,
+// `PgColumnOptions`, `PgIndexOptions`) and every shared primitive live in
+// `shared/types.ts`; this module imports them (type-only) and owns only the
+// decorator functions. The dependency is one-way (`runtime/` -> `shared/`), so
+// there is no import cycle.
+//
+// It lives in `builder/`: these functions are the decorator markers whose options
+// the builder parser reads from source. They carry no `typescript` dependency,
+// so the package entry can safely re-export them for entity classes (which
+// execute them at runtime, including `@PgKey`'s value guard). It must stay free
+// of `typescript` and `pg`.
 // ---------------------------------------------------------------------------
 
 // Tagged logger so the core stays framework-agnostic (no Nuxt dep).
 const logger = consola.withTag('pg')
-
-// === Option primitives =====================================================
-
-/**
- * A value that may be provided either as a real boolean or as a string that
- * resolves to a boolean (e.g. 'true' / 'false' / '1' / '0'). String forms are
- * accepted so configuration sources that only yield strings (env vars, YAML,
- * JSON) can still drive boolean options. The string is normalised to a boolean
- * during metadata resolution (see `runtime/repository.ts`).
- */
-export type BooleanLike = boolean | string
-
-/** Logical SQL column types. */
-export type PgColumnType =
-  | 'BIGINT'
-  | 'DOUBLE'
-  | 'BOOLEAN'
-  | 'JSON_OBJECT'
-  | 'JSON_ARRAY'
-  | 'TEXT'
-  | 'DATE'
-
-// === Decorator option types ===============================================
-
-/** Options for @PgKey decorator */
-export interface PgKeyOptions {
-  /** column name in database, default '' (derived from property name) */
-  column?: string
-  /** whether the key is auto-generated (e.g. SERIAL / GENERATED ALWAYS), default true; accepts boolean or string */
-  generated?: BooleanLike
-  /** column comment, default '' */
-  comment?: string
-}
-
-/** Options for @PgColumn decorator */
-export interface PgColumnOptions {
-  /** column name in database, default '' (derived from property name) */
-  column?: string
-  /** column comment, default '' */
-  comment?: string
-  /** logical SQL column type; must be declared on every column field */
-  columnType?: PgColumnType
-}
-
-/** Options for @PgIndex decorator (applied on the entity class) */
-export interface PgIndexOptions {
-  /** list of column names that form the index */
-  columns: string[]
-  /** whether the index is unique, default false; accepts boolean or string */
-  unique?: BooleanLike
-}
-
-/** Options for @PgEntity decorator */
-export interface PgEntityOptions {
-  /** automatically create the table if it does not exist, default true; accepts boolean or string */
-  createTableAuto?: BooleanLike
-  /** automatically add new columns not present in the database, default true; accepts boolean or string */
-  addColumnAuto?: BooleanLike
-  /** automatically create indexes defined via @PgIndex, default true; accepts boolean or string */
-  createIndexAuto?: BooleanLike
-  /** database name, default '' (uses default connection db) */
-  dbName?: string
-  /** schema name, default 'public' */
-  schema?: string
-  /** table name in database, default snake_case of the class name */
-  table?: string
-  /** table comment, default '' */
-  comment?: string
-}
 
 // === @PgKey — marks a property as a primary / unique key column ============
 //

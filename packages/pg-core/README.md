@@ -2,12 +2,34 @@
 
 Framework-agnostic PostgreSQL ORM core for [`opencowstudio`](../../README.md).
 
-This package contains everything that does **not** depend on Nuxt:
+This package contains everything that does **not** depend on Nuxt.
+
+## Layout
+
+The source is split by lifecycle stage, and dependencies flow one way only:
+`builder/ -> shared/ <- runtime/`.
+
+- `shared/` — the pure type contract both stages rely on (`types.ts` only; no
+  `typescript`, no `pg`).
+- `builder/` — the decorator markers (`builder/decorators.ts`) plus the
+  build-time parser (`builder/parser.ts`, the only place that imports the
+  TypeScript compiler API); exposed as `@opencowstudio/pg-core/builder`.
+- `runtime/` — runtime only; the only place that imports `pg`. It also owns the
+  entity operation contract and the metadata resolution.
+
+The runtime entry (`@opencowstudio/pg-core`) re-exports `shared/`, `runtime/` and
+exactly one file inside `builder/` (`decorators.ts`, which carries no
+`typescript`). It never reaches `builder/parser.ts`, so the compiler API stays
+out of the runtime bundle. These rules are enforced by
+`tests/architecture.test.ts`.
+
+## What it provides
 
 - `@PgEntity` / `@PgKey` / `@PgColumn` / `@PgIndex` decorators (static markers).
-  The decorator *option* types (`PgEntityOptions`, `PgKeyOptions`,
-  `PgColumnOptions`, `PgIndexOptions`) and the shared `BooleanLike` /
-  `PgColumnType` primitives also live in `decorators.ts`.
+  Every type they and the metadata pipeline rely on — the shared `BooleanLike` /
+  `PgColumnType` primitives, the decorator *option* types (`PgEntityOptions`,
+  `PgKeyOptions`, `PgColumnOptions`, `PgIndexOptions`) and the raw/metadata
+  shapes — lives in `shared/types.ts`.
 - A two-stage metadata pipeline:
   - **builder** (`builder/parser.ts`): `parsePgEntities` statically reads the
     decorator source via the TypeScript compiler API into a `PgEntityRaw`
@@ -17,8 +39,9 @@ This package contains everything that does **not** depend on Nuxt:
 - Typed datasource configuration metadata (`PgConfigMetadata`).
 - Connection-pool routing & multi-database registry
   (`runtime/datasource.ts`: `PgDataSource`, `PgDataSourceManager`).
-- The entity operation contract (`entity.ts`): `PgEntityRepository<T, K>` with
-  the `insert` / `update` / `delete` / `findById` surface, where `K` is the
+- The entity operation contract (`runtime/repository.ts`):
+  `PgEntityRepository<T, K>`
+  with the `insert` / `update` / `delete` / `findById` surface, where `K` is the
   primary-key value type and the key property is `id`.
 
 Id-generation utilities (`generateGuid`, `generateId`) are re-exported from

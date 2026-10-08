@@ -5,7 +5,7 @@ import type {
   PgDatabaseMetadata,
   PgNodeMetadata,
   PgPoolMetadata,
-} from '../types.ts'
+} from '../shared/types.ts'
 
 // Tagged logger so the core stays framework-agnostic (no Nuxt dep).
 const logger = consola.withTag('pg-datasource')

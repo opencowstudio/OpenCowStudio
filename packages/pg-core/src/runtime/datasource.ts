@@ -39,18 +39,19 @@ function defaultPoolFactory(node: PgNodeMetadata, pool: PgPoolMetadata): Pool {
 }
 
 // ---------------------------------------------------------------------------
-// Startup initialization — PostgreSQL extensions
+// Startup initialization — PostgreSQL DDL
 //
-// An extension is a per-database object, so it is created once on the master
-// node and reaches the read replicas through streaming replication. Creating it
-// on a replica is impossible anyway (replicas are read-only), which is why the
-// bootstrap always talks to the master pool.
+// Per-database objects are created once on the master node and reach the read
+// replicas through streaming replication. Creating them on a replica is
+// impossible anyway (replicas are read-only), which is why the bootstrap always
+// talks to the master pool.
 //
-// `pg_trgm` is the only extension the ORM depends on: it provides the trigram
-// machinery behind fuzzy text search and the GIN indexes that make it fast.
-// Its `CREATE EXTENSION IF NOT EXISTS` statement is idempotent, so running it
-// on every boot is cheap and safe — it is a no-op once the extension exists.
-// The statement itself lives in `PgSqlTemplate` and is never assembled here.
+// The initialization runs as one script: the `pg_trgm` extension (the trigram
+// machinery behind fuzzy text search and its GIN indexes) followed by the table
+// that records executed SQL scripts. Every statement is idempotent (`CREATE …
+// IF NOT EXISTS`), so running them on every boot is cheap and safe — each is a
+// no-op once its object exists. The script lives in `PgSqlTemplate` and is
+// never assembled here.
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
@@ -67,30 +68,32 @@ export class PgDataSource {
     this.slaves = database.slaves.map(s => defaultPoolFactory(s, pool))
     // Triggered, not awaited: the bootstrap reports its outcome through the
     // log and nothing here depends on it having finished.
-    void this.createExtensions(dbName)
+    void this.initializeSql(dbName)
   }
 
   /**
-   * Create the `pg_trgm` extension on the master node.
+   * Run the initialization script on the master node: the `pg_trgm` extension
+   * plus the table that records executed SQL scripts, in one round trip.
    *
    * Fire-and-forget by design: the DDL is triggered at construction time and
    * its outcome is reported through the log. Missing privileges, an unreachable
    * master or a missing contrib module are not fatal here — the features that
-   * depend on the extension fail later with their own explicit error.
+   * depend on them fail later with their own explicit error.
    */
-  private async createExtensions(dbName: string): Promise<void> {
-    logger.info(
-      `Database "${dbName}": ensuring the PostgreSQL extension "pg_trgm" on the master ...`,
-    )
+  private async initializeSql(dbName: string): Promise<void> {
+    logger.info(`Database "${dbName}": running initialization SQL on the master ...`)
 
     try {
-      await this.master.query(PgSqlTemplate.CREATE_EXTENSION_PG_TRGM)
-      logger.success(`Database "${dbName}": PostgreSQL extension "pg_trgm" ready`)
+      // One statement string (no bind parameters) so `pg` uses the simple query
+      // protocol: the whole script runs over a single connection, and
+      // PostgreSQL wraps it in one implicit transaction — all or nothing.
+      await this.master.query(PgSqlTemplate.INITIALIZATION_SCRIPT)
+      logger.success(`Database "${dbName}": initialization SQL applied`)
     } catch (err) {
       logger.error(
-        `Database "${dbName}": failed to create the PostgreSQL extension "pg_trgm". ` +
+        `Database "${dbName}": failed to run the initialization SQL. ` +
           'Creating an extension requires superuser (or equivalent) privileges; ' +
-          'features depending on it will fail until it is created manually.',
+          'features depending on the initialization DDL will fail until it is applied manually.',
         err,
       )
     }

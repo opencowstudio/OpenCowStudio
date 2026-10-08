@@ -46,6 +46,57 @@ export class PgSqlTemplate {
   static readonly CREATE_EXTENSION_PG_TRGM = 'CREATE EXTENSION IF NOT EXISTS "pg_trgm"'
 
   /**
+   * Create the table that records every executed SQL script.
+   *
+   * Parameters: none.
+   *
+   * `IF NOT EXISTS` makes the statement idempotent, so it is safe to run on
+   * every boot. The table lives in the {@link DEFAULT_SCHEMA} schema.
+   */
+  static readonly CREATE_SQL_EXECUTION_SCRIPT_TABLE = `
+CREATE TABLE IF NOT EXISTS public.sql_execution_script (
+  id             TEXT PRIMARY KEY,
+  table_name     TEXT NOT NULL,
+  script_content TEXT NOT NULL,
+  created_at     TEXT NOT NULL,
+  created_at_ts  BIGINT NOT NULL
+)
+`.trim()
+
+  /**
+   * Record one executed SQL script in `sql_execution_script`.
+   *
+   * Parameters: `$1` = id, `$2` = table_name, `$3` = script_content,
+   * `$4` = created_at, `$5` = created_at_ts.
+   */
+  static readonly INSERT_SQL_EXECUTION_SCRIPT = `
+INSERT INTO public.sql_execution_script (
+  id,
+  table_name,
+  script_content,
+  created_at,
+  created_at_ts
+) VALUES ($1, $2, $3, $4, $5)
+`.trim()
+
+  /**
+   * Initialization script run once per database at startup.
+   *
+   * Merges {@link CREATE_EXTENSION_PG_TRGM} and
+   * {@link CREATE_SQL_EXECUTION_SCRIPT_TABLE} into a single statement string.
+   * Because it takes no parameters, `pg` sends it over the simple query
+   * protocol, so the whole script runs in one connection and one round trip.
+   * PostgreSQL executes a multi-statement simple query inside a single
+   * implicit transaction, so either every object is created or none is.
+   *
+   * Parameters: none.
+   */
+  static readonly INITIALIZATION_SCRIPT = [
+    PgSqlTemplate.CREATE_EXTENSION_PG_TRGM,
+    PgSqlTemplate.CREATE_SQL_EXECUTION_SCRIPT_TABLE,
+  ].join(';\n')
+
+  /**
    * Column definitions of a table: one row per column, in declaration order.
    *
    * Parameters: `$1` = schema, `$2` = table.

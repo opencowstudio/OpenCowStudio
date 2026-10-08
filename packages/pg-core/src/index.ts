@@ -34,5 +34,8 @@ export type {
 // Entity repository (runtime stage): raw -> validated metadata.
 export { resolvePgEntityRaw } from './runtime/repository'
 
+// Entity operation contract (CRUD).
+export type { PgEntityRepository } from './entity.ts'
+
 // DataSource (connection-pool routing & multi-database registry).
 export { PgDataSource, PgDataSourceManager } from './runtime/datasource'

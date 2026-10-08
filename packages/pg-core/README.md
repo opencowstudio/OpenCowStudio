@@ -17,6 +17,9 @@ This package contains everything that does **not** depend on Nuxt:
 - Typed datasource configuration metadata (`PgConfigMetadata`).
 - Connection-pool routing & multi-database registry
   (`runtime/datasource.ts`: `PgDataSource`, `PgDataSourceManager`).
+- The entity operation contract (`entity.ts`): `PgEntityRepository<T, K>` with
+  the `insert` / `update` / `delete` / `findById` surface, where `K` is the
+  primary-key value type and the key property is `id`.
 
 Id-generation utilities (`generateGuid`, `generateId`) are re-exported from
 [`@opencowstudio/core`](../core) so they can be shared across packages.

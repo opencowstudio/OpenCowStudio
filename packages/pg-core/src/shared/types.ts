@@ -11,13 +11,22 @@
 //   * Configuration metadata (`PgConfigMetadata`, …) describes the datasource
 //     definition and is independent of the entity pipeline.
 //
-// The decorator *option* types (`PgEntityOptions`, …) and the shared
-// `BooleanLike` / `PgColumnType` primitives live in `builder/decorators.ts`;
-// `PgColumnType` is re-imported here (type-only) so the metadata shapes can
-// reference it.
+// The decorator *option* types (`PgEntityOptions`, …) live in
+// `builder/decorators.ts`; the shared `PgColumnType` primitive is defined here
+// and re-imported by that module (type-only).
 // ---------------------------------------------------------------------------
 
-import type { PgColumnType } from '../builder/decorators.ts'
+// === Column primitives =====================================================
+
+/** Logical SQL column types. */
+export type PgColumnType =
+  | 'BIGINT'
+  | 'DOUBLE'
+  | 'BOOLEAN'
+  | 'JSON_OBJECT'
+  | 'JSON_ARRAY'
+  | 'TEXT'
+  | 'DATE'
 
 // === Entity metadata =======================================================
 

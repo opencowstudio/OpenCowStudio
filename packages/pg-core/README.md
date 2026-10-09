@@ -28,13 +28,14 @@ out of the runtime bundle. These rules are enforced by
 
 - `@PgEntity` / `@PgKey` / `@PgColumn` / `@PgIndex` decorators (static markers)
   and their option types (`PgEntityOptions`, `PgKeyOptions`, `PgColumnOptions`,
-  `PgIndexOptions`) plus the shared `BooleanLike` / `PgColumnType` primitives, in
-  `builder/decorators.ts`. The raw/metadata shapes live in `shared/types.ts`.
+  `PgIndexOptions`), in `builder/decorators.ts`.
+- The shared `PgColumnType` primitive along with the raw/metadata shapes in
+  `shared/types.ts`.
 - A build-time metadata pipeline (`builder/parser.ts`, exported from
   `@opencowstudio/pg-core/builder`): `parsePgEntity` / `parsePgEntities`
   statically read the decorator *source* via the TypeScript compiler API and
   return fully-resolved `PgEntityMetadata` — identifiers validated, defaults
-  applied, BooleanLike strings coerced.
+  applied, boolean options type-checked.
 - Typed datasource configuration metadata (`PgConfigMetadata`).
 - Connection-pool routing & multi-database registry
   (`runtime/datasource.ts`: `PgDataSource`, `PgDataSourceManager`).

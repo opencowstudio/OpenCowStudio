@@ -1,4 +1,5 @@
 import { consola } from 'consola'
+import type { PgColumnType } from '../shared/types.ts'
 
 // ---------------------------------------------------------------------------
 // Entity decorators + their option types
@@ -10,12 +11,10 @@ import { consola } from 'consola'
 // is ever instantiated during scanning.
 //
 // This module owns the decorator *option* types (`PgEntityOptions`,
-// `PgKeyOptions`, `PgColumnOptions`, `PgIndexOptions`) plus the shared
-// `BooleanLike` / `PgColumnType` primitives they rely on, so it does NOT import
-// from `shared/types.ts`. The resolved metadata (`PgEntityMetadata`, …) and the
-// configuration metadata live in `shared/types.ts` and reference these types
-// (type-only), which keeps the dependency one-way:
-// `shared/` -> `builder/decorators.ts`.
+// `PgKeyOptions`, `PgColumnOptions`, `PgIndexOptions`). The shared
+// `PgColumnType` primitive lives in `shared/types.ts` alongside the metadata
+// shapes and is re-imported here (type-only), so the dependency points one way:
+// `builder/decorators.ts` -> `shared/types.ts`.
 //
 // It carries no `typescript` dependency, so the package entry can safely
 // re-export the markers for entity classes to use at runtime (including
@@ -25,35 +24,12 @@ import { consola } from 'consola'
 // Tagged logger so the core stays framework-agnostic (no Nuxt dep).
 const logger = consola.withTag('pg')
 
-// === Option primitives =====================================================
-
-/**
- * A value that may be provided either as a real boolean or as a string that
- * resolves to a boolean (e.g. 'true' / 'false' / '1' / '0'). String forms are
- * accepted so configuration sources that only yield strings (env vars, YAML,
- * JSON) can still drive boolean options. The string is normalised to a boolean
- * during metadata resolution (see `parsePgEntity` in `builder/parser.ts`).
- */
-export type BooleanLike = boolean | string
-
-/** Logical SQL column types. */
-export type PgColumnType =
-  | 'BIGINT'
-  | 'DOUBLE'
-  | 'BOOLEAN'
-  | 'JSON_OBJECT'
-  | 'JSON_ARRAY'
-  | 'TEXT'
-  | 'DATE'
-
 // === Decorator option types ================================================
 
 /** Options for @PgKey decorator */
 export interface PgKeyOptions {
-  /** column name in database, default '' (derived from property name) */
-  column?: string
-  /** whether the key is auto-generated (e.g. SERIAL / GENERATED ALWAYS), default true; accepts boolean or string */
-  generated?: BooleanLike
+  /** whether the key is auto-generated (e.g. SERIAL / GENERATED ALWAYS), default true */
+  generated?: boolean
   /** column comment, default '' */
   comment?: string
 }
@@ -72,18 +48,18 @@ export interface PgColumnOptions {
 export interface PgIndexOptions {
   /** list of column names that form the index */
   columns: string[]
-  /** whether the index is unique, default false; accepts boolean or string */
-  unique?: BooleanLike
+  /** whether the index is unique, default false */
+  unique?: boolean
 }
 
 /** Options for @PgEntity decorator */
 export interface PgEntityOptions {
-  /** automatically create the table if it does not exist, default true; accepts boolean or string */
-  createTableAuto?: BooleanLike
-  /** automatically add new columns not present in the database, default true; accepts boolean or string */
-  addColumnAuto?: BooleanLike
-  /** automatically create indexes defined via @PgIndex, default true; accepts boolean or string */
-  createIndexAuto?: BooleanLike
+  /** automatically create the table if it does not exist, default true */
+  createTableAuto?: boolean
+  /** automatically add new columns not present in the database, default true */
+  addColumnAuto?: boolean
+  /** automatically create indexes defined via @PgIndex, default true */
+  createIndexAuto?: boolean
   /** database name, default '' (uses default connection db) */
   dbName?: string
   /** schema name, default 'public' */

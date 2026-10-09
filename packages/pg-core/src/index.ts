@@ -19,8 +19,6 @@
 // Entity decorators (static markers). Value-level only; free of `typescript`.
 export { PgEntity, PgKey, PgColumn, PgIndex } from './builder/decorators'
 export type {
-  BooleanLike,
-  PgColumnType,
   PgEntityOptions,
   PgKeyOptions,
   PgColumnOptions,
@@ -29,8 +27,9 @@ export type {
 
 // === shared — the metadata type contract ===================================
 
-// Entity metadata and configuration metadata types.
+// Column primitives, entity metadata and configuration metadata types.
 export type {
+  PgColumnType,
   PgEntityMetadata,
   PgKeyMetadata,
   PgColumnMetadata,

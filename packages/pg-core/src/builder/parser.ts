@@ -2,14 +2,13 @@ import ts from 'typescript'
 import { normalize } from 'node:path'
 import { consola } from 'consola'
 import type {
-  BooleanLike,
   PgColumnOptions,
-  PgColumnType,
   PgEntityOptions,
   PgIndexOptions,
   PgKeyOptions,
 } from './decorators.ts'
 import type {
+  PgColumnType,
   PgEntityMetadata,
   PgKeyMetadata,
 } from '../shared/types.ts'
@@ -38,8 +37,8 @@ const logger = consola.withTag('pg-parser')
 // JavaScript values.
 //
 // Steps 1–7 read the decorator source verbatim; step 8 is where correctness is
-// enforced — identifiers validated, defaults filled in and BooleanLike strings
-// coerced — producing a fully-resolved `PgEntityMetadata`.
+// enforced — identifiers validated, boolean options type-checked and defaults
+// filled in — producing a fully-resolved `PgEntityMetadata`.
 // ---------------------------------------------------------------------------
 
 /** Options controlling program creation and parsing behaviour. */
@@ -257,8 +256,8 @@ export function parseIndexDecorators(
  * declares no `@PgKey` field, because an entity must declare exactly one.
  *
  * This is where correctness is enforced: identifiers are validated, missing
- * values get their defaults, and BooleanLike strings are coerced to real
- * booleans. Diagnostic messages are logged before throwing.
+ * values get their defaults, and boolean options are type-checked. Diagnostic
+ * messages are logged before throwing.
  */
 export function parsePgEntity(
   node: ts.ClassDeclaration,
@@ -300,26 +299,23 @@ export function parsePgEntity(
     const ctx = `entity ${className} index [${index.options.columns.join(', ')}]`
     return {
       columns: index.options.columns,
-      unique: toBoolean(index.options.unique, false, `${ctx}.unique`),
+      unique: resolveBoolean(index.options.unique, false, `${ctx}.unique`),
     }
   })
 
-  const createTableAuto = toBoolean(options.createTableAuto, true, `entity ${className}.createTableAuto`)
-  const addColumnAuto = toBoolean(options.addColumnAuto, true, `entity ${className}.addColumnAuto`)
-  const createIndexAuto = toBoolean(options.createIndexAuto, true, `entity ${className}.createIndexAuto`)
+  const createTableAuto = resolveBoolean(options.createTableAuto, true, `entity ${className}.createTableAuto`)
+  const addColumnAuto = resolveBoolean(options.addColumnAuto, true, `entity ${className}.addColumnAuto`)
+  const createIndexAuto = resolveBoolean(options.createIndexAuto, true, `entity ${className}.createIndexAuto`)
 
   // --- key field ---
-  const keyMetadata: PgKeyMetadata = (() => {
-    const propertyKey = key.propertyKey
-    const column = key.options.column?.trim() ? key.options.column : toSnakeCase(propertyKey)
-    assertValidIdentifier(column, 'column', `key ${propertyKey} on ${className}`)
-    return {
-      propertyKey,
-      column,
-      generated: toBoolean(key.options.generated, true, `key ${propertyKey}.generated on ${className}`),
-      comment: key.options.comment ?? '',
-    }
-  })()
+  // The key column name is fixed to `id`; `@PgKey` carries no column option, so
+  // the property name never affects the database column.
+  const keyMetadata: PgKeyMetadata = {
+    propertyKey: key.propertyKey,
+    column: KEY_COLUMN,
+    generated: resolveBoolean(key.options.generated, true, `key ${key.propertyKey}.generated on ${className}`),
+    comment: key.options.comment ?? '',
+  }
 
   // --- column fields ---
   const columnMetadata = columns.map((c) => {
@@ -588,6 +584,9 @@ function positionText(node: ts.Node, sourceFile: ts.SourceFile): string {
 
 // === Resolution helpers (used by parsePgEntity) ============================
 
+/** Database column name used for every entity's primary key. */
+const KEY_COLUMN = 'id'
+
 /** Convert a string (typically a field name) to snake_case. */
 function toSnakeCase(name: string): string {
   return name
@@ -645,19 +644,16 @@ function resolveColumnType(value: PgColumnType | undefined, context: string): Pg
 }
 
 /**
- * Normalise a `BooleanLike` value to a boolean.
+ * Resolve a boolean option value.
  *
- * `undefined` falls back to `fallback`. Real booleans pass through. Strings
- * `'true'`/`'1'` become `true`; `'false'`/`'0'` become `false`. Any other
- * string is rejected (logged + thrown) because the raw value is invalid.
+ * `undefined` falls back to `fallback`; a real boolean passes through. Any
+ * other value (e.g. the strings `'true'`/`'false'`) is rejected (logged +
+ * thrown) because only real booleans are accepted.
  */
-function toBoolean(value: BooleanLike | undefined, fallback: boolean, context: string): boolean {
+function resolveBoolean(value: unknown, fallback: boolean, context: string): boolean {
   if (value === undefined) return fallback
   if (typeof value === 'boolean') return value
-  const normalised = value.trim().toLowerCase()
-  if (normalised === 'true' || normalised === '1') return true
-  if (normalised === 'false' || normalised === '0') return false
-  const message = `Invalid boolean value "${value}" for ${context}: expected true/false or the strings "true"/"false".`
+  const message = `Invalid boolean value "${String(value)}" for ${context}: expected a boolean.`
   logger.error(message)
   throw new Error(message)
 }

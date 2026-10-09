@@ -22,7 +22,7 @@ describe('builder parser — parsePgEntities (resolution)', () => {
     expect(meta.dbName).toBe('my_db')
     expect(meta.schema).toBe('app')
     expect(meta.table).toBe('my_tbl')
-    // the string boolean 'false' is coerced to a real boolean
+    // an explicit boolean option is read from source
     expect(meta.createTableAuto).toBe(false)
     // omitted booleans fall back to their defaults
     expect(meta.addColumnAuto).toBe(true)
@@ -33,7 +33,7 @@ describe('builder parser — parsePgEntities (resolution)', () => {
     ])
   })
 
-  it('should normalise string booleans on every entity option', () => {
+  it('should read every explicit boolean option', () => {
     const meta = parseOne('bool-entity.ts')
     expect(meta.createTableAuto).toBe(false)
     expect(meta.addColumnAuto).toBe(false)
@@ -54,7 +54,8 @@ describe('builder parser — parsePgEntities (resolution)', () => {
     expect(meta.dbName).toBe('default')
     expect(meta.schema).toBe('public')
     expect(meta.table).toBe('snake_case')
-    expect(meta.key.column).toBe('user_id')
+    // the key column is always 'id', regardless of the property name
+    expect(meta.key.column).toBe('id')
     expect(meta.columns.map(c => c.column).sort()).toEqual([
       'display_name',
       'first_name',
@@ -85,8 +86,8 @@ describe('builder parser — parsePgEntities (resolution)', () => {
     expect(parseOne('const-ref.ts').schema).toBe('tenant')
   })
 
-  it('should reject an unparseable BooleanLike string', () => {
-    expect(() => parsePgEntities([entity('bad-bool.ts')])).toThrow(/Invalid boolean value/)
+  it('should reject a non-boolean option value', () => {
+    expect(() => parsePgEntities([entity('bad-bool.ts')])).toThrow(/expected a boolean/)
   })
 })
 

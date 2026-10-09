@@ -65,7 +65,7 @@ describe('builder parser — parsePgEntities (resolution)', () => {
     ])
   })
 
-  it('should resolve @PgIndex declarations into index metadata', () => {
+  it('should resolve the indexes declared on @PgEntity into index metadata', () => {
     const meta = parseOne('indexed.ts')
     expect(meta.indexes).toEqual([{ columns: ['email'], unique: true }])
   })

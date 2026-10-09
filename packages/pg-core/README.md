@@ -26,9 +26,10 @@ out of the runtime bundle. These rules are enforced by
 
 ## What it provides
 
-- `@PgEntity` / `@PgKey` / `@PgColumn` / `@PgIndex` decorators (static markers)
-  and their option types (`PgEntityOptions`, `PgKeyOptions`, `PgColumnOptions`,
-  `PgIndexOptions`), in `builder/decorators.ts`.
+- `@PgEntity` / `@PgKey` / `@PgColumn` decorators (static markers) and their option
+  types (`PgEntityOptions`, `PgKeyOptions`, `PgColumnOptions`, `PgIndexOptions`) in
+  `builder/decorators.ts`. Table indexes are declared through the `indexes` option of
+  `@PgEntity`, not through a separate decorator.
 - The shared `PgColumnType` primitive along with the raw/metadata shapes in
   `shared/types.ts`.
 - A build-time metadata pipeline (`builder/parser.ts`, exported from

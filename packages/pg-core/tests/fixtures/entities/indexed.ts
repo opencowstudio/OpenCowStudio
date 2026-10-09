@@ -1,7 +1,6 @@
-import { PgEntity, PgKey, PgIndex } from '../../../src'
+import { PgEntity, PgKey } from '../../../src'
 
-@PgEntity()
-@PgIndex({ columns: ['email'], unique: true })
+@PgEntity({ indexes: [{ columns: ['email'], unique: true }] })
 export class Indexed {
   @PgKey() id!: string
 }

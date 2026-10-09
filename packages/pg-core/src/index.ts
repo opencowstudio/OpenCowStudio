@@ -17,7 +17,7 @@
 // === builder — decorator markers ===========================================
 
 // Entity decorators (static markers). Value-level only; free of `typescript`.
-export { PgEntity, PgKey, PgColumn, PgIndex } from './builder/decorators'
+export { PgEntity, PgKey, PgColumn } from './builder/decorators'
 export type {
   PgEntityOptions,
   PgKeyOptions,

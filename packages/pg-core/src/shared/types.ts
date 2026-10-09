@@ -30,7 +30,7 @@ export type PgColumnType =
 
 // === Entity metadata =======================================================
 
-/** Metadata stored for each @PgIndex definition. */
+/** Metadata stored for each index declared via `PgEntityOptions.indexes`. */
 export interface PgIndexMetadata {
   /** list of column names that form the index */
   columns: string[]

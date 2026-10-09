@@ -1,4 +1,4 @@
-import { PgEntity, PgKey, PgColumn, PgIndex } from '../../../src'
+import { PgEntity, PgKey, PgColumn } from '../../../src'
 
 @PgEntity({
   table: 'users',
@@ -7,8 +7,8 @@ import { PgEntity, PgKey, PgColumn, PgIndex } from '../../../src'
   createTableAuto: true,
   addColumnAuto: true,
   createIndexAuto: true,
+  indexes: [{ columns: ['email'], unique: true }],
 })
-@PgIndex({ columns: ['email'], unique: true })
 export class User {
   @PgKey({ generated: false })
   id!: string

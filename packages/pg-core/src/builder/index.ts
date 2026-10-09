@@ -13,7 +13,6 @@ export {
   parsePropertyDecorators,
   parsePgKey,
   parsePgColumn,
-  parseIndexDecorators,
   parsePgEntity,
   parsePgEntities,
 } from './parser'
@@ -22,7 +21,6 @@ export type {
   ParsedPropertyDecorators,
   ParsedKeyField,
   ParsedColumnField,
-  ParsedIndexDecl,
   LiteralValue,
   EntityClassNode,
 } from './parser'

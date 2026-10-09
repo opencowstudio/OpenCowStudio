@@ -1,20 +1,18 @@
 /// <reference types="vite/client" />
 import { describe, it, expect } from 'vitest'
-import { PgEntity, PgKey, PgColumn, PgIndex } from '../src'
+import { PgEntity, PgKey, PgColumn } from '../src'
 
 describe('Pg decorators — definitions', () => {
-  it('should export the four entity decorators as functions', () => {
+  it('should export the three entity decorators as functions', () => {
     expect(typeof PgEntity).toBe('function')
     expect(typeof PgKey).toBe('function')
     expect(typeof PgColumn).toBe('function')
-    expect(typeof PgIndex).toBe('function')
   })
 
   it('should return an decorator factory when called (no runtime side effects)', () => {
-    // @PgEntity / @PgIndex are class decorators; @PgKey / @PgColumn are field
-    // decorators. Calling them returns the decorator function without throwing.
+    // @PgEntity is a class decorator; @PgKey / @PgColumn are field decorators.
+    // Calling them returns the decorator function without throwing.
     expect(typeof PgEntity({})).toBe('function')
-    expect(typeof PgIndex({ columns: ['a'] })).toBe('function')
     expect(typeof PgKey({})).toBe('function')
     expect(typeof PgColumn({ columnType: 'TEXT' })).toBe('function')
   })

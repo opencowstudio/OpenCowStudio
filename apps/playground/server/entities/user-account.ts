@@ -1,7 +1,9 @@
-import { PgEntity, PgKey, PgColumn, PgIndex } from '@opencowstudio/pg-core'
+import { PgEntity, PgKey, PgColumn } from '@opencowstudio/pg-core'
 
-@PgEntity({ schema: 'opencow' })
-@PgIndex({ columns: ['account'], unique: true })
+@PgEntity({
+  schema: 'opencow',
+  indexes: [{ columns: ['account'], unique: true }],
+})
 export class UserAccount {
   @PgKey()
   id!: string

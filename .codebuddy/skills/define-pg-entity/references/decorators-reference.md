@@ -7,7 +7,7 @@ Resolved metadata shapes live in `packages/pg-core/src/shared/types.ts`.
 ## Imports
 
 ```ts
-import { PgEntity, PgKey, PgColumn, PgIndex } from '@opencowstudio/pg-core'
+import { PgEntity, PgKey, PgColumn } from '@opencowstudio/pg-core'
 import type {
   PgEntityOptions,
   PgKeyOptions,
@@ -55,10 +55,28 @@ type PgColumnType =
 | `comment` | `string` | `''` | Table comment |
 | `createTableAuto` | `boolean` | `true` | Auto-create the table when absent |
 | `addColumnAuto` | `boolean` | `true` | Auto-add columns missing in the database |
-| `createIndexAuto` | `boolean` | `true` | Auto-create indexes declared via `@PgIndex` |
+| `createIndexAuto` | `boolean` | `true` | Auto-create the declared indexes |
+| `indexes` | `PgIndexOptions[]` | `[]` (none) | Table indexes to create, in declaration order |
 
 Blank or whitespace-only strings for `table` / `schema` / `dbName` fall back to their
 defaults. The decorator may be called bare (`@PgEntity()`) or with an object literal.
+
+## `PgIndexOptions` — one entry of `@PgEntity({ indexes: [...] })`
+
+| Option | Type | Default | Meaning |
+|---|---|---|---|
+| `columns` | `string[]` | — (**required**) | Database column names forming the index |
+| `unique` | `boolean` | `false` | Whether the index is unique |
+
+There is **no** `@PgIndex` decorator: indexes are declared as an array inside the
+`@PgEntity` argument, e.g.
+`@PgEntity({ indexes: [{ columns: ['account'], unique: true }] })`.
+
+`columns` is required and must be a non-empty array literal of statically evaluable
+strings. A malformed entry (non-array `indexes`, a non-object entry, or a missing / empty
+/ non-string `columns`) throws. Each entry is validated as an identifier, but entries are
+**not** checked against the entity's declared columns — a typo only surfaces when the
+index is created against PostgreSQL.
 
 ## `@PgKey(options?)` — property decorator (exactly one per entity)
 
@@ -88,18 +106,6 @@ name `id`, so name the key field `id`.
 `columnType` is mandatory: `@PgColumn()` with no argument throws
 `Missing required columnType for column <property> on <Class>`.
 
-## `@PgIndex(options)` — class decorator (repeatable)
-
-| Option | Type | Default | Meaning |
-|---|---|---|---|
-| `columns` | `string[]` | — (**required**) | Database column names forming the index |
-| `unique` | `boolean` | `false` | Whether the index is unique |
-
-`columns` is required and must be an array literal of statically evaluable strings. Each
-entry is validated as an identifier, but entries are **not** checked against the
-entity's declared columns — a typo only surfaces when the index is created against
-PostgreSQL.
-
 ## Literal evaluation rules
 
 Decorator arguments are evaluated from source text, so only these forms are supported:
@@ -128,13 +134,12 @@ calling a helper (`@PgEntity({ table: buildName('user') })`) breaks the build-ti
 1. `createProgram` — a `ts.Program` over the root files (ESNext, Bundler resolution).
 2. `findEntityClassDeclarations` — every named class with a `@PgEntity` decorator in the
    root files (declaration files and imported files excluded).
-3. `parseClassDecorator` — the `@PgEntity` options.
+3. `parseClassDecorator` — the `@PgEntity` options, including the `indexes` array.
 4. `parsePropertyDecorators` — walks members, collects the single `@PgKey` and every
    `@PgColumn`.
 5. `parsePgKey` / `parsePgColumn` — per-decorator options.
-6. `parseIndexDecorators` — every `@PgIndex` on the class, in declaration order.
-7. `parsePgEntity` — assembles and resolves `PgEntityMetadata`: identifiers validated,
-   boolean options type-checked, defaults filled in.
+6. `parsePgEntity` — assembles and resolves `PgEntityMetadata`: identifiers validated,
+   `indexes` entries validated, boolean options type-checked, defaults filled in.
 
 `{ skipInvalid: true }` (used by `nuxt-pg`) logs `Skipping entity "<Name>": <error>` and
 continues; otherwise the first invalid entity aborts the scan.
@@ -184,5 +189,8 @@ the build directory and exposes them via the `#pg-manifest` and
 | Unknown `columnType` | `Invalid columnType "<value>" for column <prop> on <Name>. Expected one of: ...` |
 | Bad identifier | `Invalid <kind> "<value>": must match /^[a-zA-Z0-9_]+$/ (alphanumeric and underscore only). Context: <context>` |
 | Bad boolean | `Invalid boolean value "<value>" for <context>: expected a boolean.` |
+| `indexes` not an array | `Invalid "indexes" option for entity <Name>: expected an array of index definitions.` |
+| `indexes` entry not an object | `Invalid entity <Name> index #<n>: expected an object literal with a "columns" array.` |
+| `indexes` entry has bad `columns` | `Invalid entity <Name> index #<n>: "columns" must be a non-empty array of column names.` |
 | Non-object decorator argument | `@<Decorator> expects an object-literal argument at <file>:<line>:<col>.` |
 | Unsupported expression | `Cannot evaluate decorator expression of kind <Kind> at <file>:<line>:<col>.` |

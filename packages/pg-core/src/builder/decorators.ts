@@ -4,11 +4,12 @@ import type { PgColumnType } from '../shared/types.ts'
 // ---------------------------------------------------------------------------
 // Entity decorators + their option types
 //
-// `@PgEntity` / `@PgKey` / `@PgColumn` / `@PgIndex` are *static markers*. They
-// carry no behaviour at runtime beyond `@PgKey`'s value guard (a data contract
-// the static parser cannot enforce). All configuration is read by the builder
-// parser (`builder/parser.ts`) straight from the decorator *source*, so no class
-// is ever instantiated during scanning.
+// `@PgEntity` / `@PgKey` / `@PgColumn` are *static markers*. They carry no
+// behaviour at runtime beyond `@PgKey`'s value guard (a data contract the static
+// parser cannot enforce). All configuration — including the table's indexes,
+// declared through `PgEntityOptions.indexes` — is read by the builder parser
+// (`builder/parser.ts`) straight from the decorator *source*, so no class is ever
+// instantiated during scanning.
 //
 // This module owns the decorator *option* types (`PgEntityOptions`,
 // `PgKeyOptions`, `PgColumnOptions`, `PgIndexOptions`). The shared
@@ -44,7 +45,7 @@ export interface PgColumnOptions {
   columnType?: PgColumnType
 }
 
-/** Options for @PgIndex decorator (applied on the entity class) */
+/** Options for a single table index, declared through `PgEntityOptions.indexes` */
 export interface PgIndexOptions {
   /** list of column names that form the index */
   columns: string[]
@@ -58,8 +59,10 @@ export interface PgEntityOptions {
   createTableAuto?: boolean
   /** automatically add new columns not present in the database, default true */
   addColumnAuto?: boolean
-  /** automatically create indexes defined via @PgIndex, default true */
+  /** automatically create the declared indexes, default true */
   createIndexAuto?: boolean
+  /** table indexes to create, in declaration order; default none */
+  indexes?: PgIndexOptions[]
   /** database name, default '' (uses default connection db) */
   dbName?: string
   /** schema name, default 'public' */
@@ -102,17 +105,6 @@ export function PgColumn(_options: PgColumnOptions = {}): <C, V>(
   context: ClassFieldDecoratorContext<C, V>,
 ) => void {
   return function (_value: undefined, _context: ClassFieldDecoratorContext): void {
-    // Marker only — raw options are read statically by the builder parser.
-  }
-}
-
-// === @PgIndex — marks an index on the entity (static marker, class-level) ===
-
-export function PgIndex(_options: PgIndexOptions): <C extends abstract new (...args: unknown[]) => unknown>(
-  value: C,
-  context: ClassDecoratorContext<C>,
-) => C | void {
-  return function (_value: Function, _context: ClassDecoratorContext): void {
     // Marker only — raw options are read statically by the builder parser.
   }
 }

@@ -1,6 +1,6 @@
 ---
 name: define-pg-entity
-description: This skill should be used when adding, defining, or modifying a PostgreSQL entity (a database table class) in an OpenCowStudio Nuxt project — that is, any `@PgEntity`-decorated class under an app's `server/entities/` directory. It covers the `@PgEntity` / `@PgKey` / `@PgColumn` / `@PgIndex` decorators of `@opencowstudio/pg-core`, their options and defaults, the static rules enforced by the build-time parser, and how the `@opencowstudio/nuxt-pg` module discovers entities at build time.
+description: This skill should be used when adding, defining, or modifying a PostgreSQL entity (a database table class) in an OpenCowStudio Nuxt project — that is, any `@PgEntity`-decorated class under an app's `server/entities/` directory. It covers the `@PgEntity` / `@PgKey` / `@PgColumn` decorators of `@opencowstudio/pg-core`, their options and defaults (including the `indexes` option that declares table indexes), the static rules enforced by the build-time parser, and how the `@opencowstudio/nuxt-pg` module discovers entities at build time.
 ---
 
 # Define a PostgreSQL Entity
@@ -55,20 +55,23 @@ manager currently only ensures each entity's schema exists).
 5. **Add `@PgColumn` fields.** Every column must declare `columnType`; there is no
    inference from the TypeScript type. Only `PropertyDeclaration` members are read, so
    getters, methods and constructor parameter properties are ignored.
-6. **Add zero or more `@PgIndex(...)` decorators** on the class (repeatable). Index
-   column names are the **database column names**, not the property names.
+6. **Declare indexes through `@PgEntity`'s `indexes` option** (there is no `@PgIndex`
+   decorator). Each entry is one index definition; index column names are the
+   **database column names**, not the property names.
 7. **Write only what you need.** Every option except `columnType` (on `@PgColumn`) and
-   `columns` (on `@PgIndex`) has a default — see [Option Hygiene](#option-hygiene).
+   `columns` (on an `indexes` entry) has a default — see [Option Hygiene](#option-hygiene).
 8. **Verify.** Run `pnpm typecheck` from the repo root, then start or build the app and
    confirm the entity appears in the module log output.
 
 Canonical entity file (only non-default options are written):
 
 ```ts
-import { PgEntity, PgKey, PgColumn, PgIndex } from '@opencowstudio/pg-core'
+import { PgEntity, PgKey, PgColumn } from '@opencowstudio/pg-core'
 
-@PgEntity({ table: 'users' })
-@PgIndex({ columns: ['email'], unique: true })
+@PgEntity({
+  table: 'users',
+  indexes: [{ columns: ['email'], unique: true }],
+})
 export class User {
   @PgKey()
   id!: string
@@ -105,8 +108,10 @@ optional **and has a default**. Therefore:
 @PgEntity({ table: 'user_account', schema: 'public', createTableAuto: true, comment: 'Accounts' })
 
 // Good — only the intended deviations.
-@PgEntity({ schema: 'opencow' })
-@PgIndex({ columns: ['account'], unique: true })
+@PgEntity({
+  schema: 'opencow',
+  indexes: [{ columns: ['account'], unique: true }],
+})
 ```
 
 ## Hard Constraints (enforced at build time)
@@ -118,6 +123,7 @@ optional **and has a default**. Therefore:
 | `columnType` is one of the seven allowed values | An unknown value throws |
 | Decorator argument is an object literal (or the call is bare) | `@PgEntity('users')` throws |
 | Every decorator argument is statically evaluable | Function calls, imported constants, template expressions and computed values throw |
+| `indexes` is an array of object literals, each with a non-empty `string[]` `columns` | A non-array `indexes`, a non-object entry, or a missing / empty / non-string `columns` throws |
 | `dbName` / `schema` / `table` / column names / index columns match `/^[a-zA-Z0-9_]+$/` | Any other identifier throws |
 | Boolean options are real `boolean` literals | A string (`'true'` / `'false'` / `'1'` / `'0'`) or any other type throws |
 

@@ -4,12 +4,12 @@ import { consola } from 'consola'
 import type {
   PgColumnOptions,
   PgEntityOptions,
-  PgIndexOptions,
   PgKeyOptions,
 } from './decorators.ts'
 import type {
   PgColumnType,
   PgEntityMetadata,
+  PgIndexMetadata,
   PgKeyMetadata,
 } from '../shared/types.ts'
 
@@ -29,16 +29,17 @@ const logger = consola.withTag('pg-parser')
 //   4. parsePropertyDecorators  — read @PgKey / @PgColumn on each property
 //   5. parsePgKey               — extract a single @PgKey's options
 //   6. parsePgColumn            — extract a single @PgColumn's options
-//   7. parseIndexDecorators     — read every @PgIndex(...) on the class
-//   8. parsePgEntity            — assemble + resolve one class into metadata
+//   7. parsePgEntity            — assemble + resolve one class into metadata
 //
 // A literal evaluator turns the decorator call arguments (object / array /
 // string / number / boolean / null / simple identifier references) into plain
-// JavaScript values.
+// JavaScript values. Table indexes are declared through the `indexes` option of
+// `@PgEntity`, so they are read as part of the class-decorator options (step 3).
 //
-// Steps 1–7 read the decorator source verbatim; step 8 is where correctness is
-// enforced — identifiers validated, boolean options type-checked and defaults
-// filled in — producing a fully-resolved `PgEntityMetadata`.
+// Steps 1–6 read the decorator source verbatim; step 7 is where correctness is
+// enforced — identifiers validated, index options validated, boolean options
+// type-checked and defaults filled in — producing a fully-resolved
+// `PgEntityMetadata`.
 // ---------------------------------------------------------------------------
 
 /** Options controlling program creation and parsing behaviour. */
@@ -58,8 +59,8 @@ export interface ParseProgramOptions {
  * Build a `ts.Program` over the given entity source files.
  *
  * Defaults target ESNext / Bundler resolution so native decorators
- * (`@PgEntity`, `@PgKey`, `@PgColumn`, `@PgIndex`) are parsed as decorator
- * nodes. Module resolution failures only surface as diagnostics and never
+ * (`@PgEntity`, `@PgKey`, `@PgColumn`) are parsed as decorator nodes. Module
+ * resolution failures only surface as diagnostics and never
  * prevent the AST from being walked, so a project's imports need not resolve
  * for parsing to succeed.
  */
@@ -147,12 +148,6 @@ export interface ParsedColumnField {
   options: PgColumnOptions
 }
 
-/** A parsed `@PgIndex` declaration: the options read from its call. */
-export interface ParsedIndexDecl {
-  /** the options read from the `@PgIndex(...)` call */
-  options: PgIndexOptions
-}
-
 /** Result of parsing a class's property decorators. */
 export interface ParsedPropertyDecorators {
   /** the single @PgKey field (exactly one allowed) */
@@ -226,26 +221,7 @@ export function parsePgColumn(
   return { propertyKey, options }
 }
 
-// === Step 7 — parse @PgIndex decorators ==================================
-
-/**
- * Parse every `@PgIndex(...)` decorator declared on a class into a
- * {@link ParsedIndexDecl}.
- *
- * Multiple `@PgIndex` decorators may be applied to the same class; each becomes
- * one entry in the returned array (in declaration order).
- */
-export function parseIndexDecorators(
-  node: ts.ClassDeclaration,
-  sourceFile: ts.SourceFile,
-): ParsedIndexDecl[] {
-  const decorators = getDecorators(node, 'PgIndex')
-  return decorators.map(decorator => ({
-    options: parseOptionsArgument<PgIndexOptions>(decorator, sourceFile, 'PgIndex'),
-  }))
-}
-
-// === Step 8 — assemble + resolve PgEntityMetadata ========================
+// === Step 7 — assemble + resolve PgEntityMetadata ========================
 
 /**
  * Build the fully-resolved `PgEntityMetadata` for a single `@PgEntity` class
@@ -269,7 +245,7 @@ export function parsePgEntity(
   const className = node.name.text
   const options = parseClassDecorator(entityDecorator, sourceFile) // Step 3
   const { key, columns } = parsePropertyDecorators(node.members, sourceFile) // Step 4
-  const indexes = parseIndexDecorators(node, sourceFile) // Step 7
+  const indexes = resolveIndexes(options.indexes, className)
 
   if (!key) {
     const message = `Entity "${className}" declares no @PgKey field; an entity must declare exactly one @PgKey.`
@@ -285,23 +261,6 @@ export function parsePgEntity(
   assertValidIdentifier(dbName, 'dbName', `entity ${className}`)
   assertValidIdentifier(schema, 'schema', `entity ${className}`)
   assertValidIdentifier(table, 'table', `entity ${className}`)
-  for (const index of indexes) {
-    for (const col of index.options.columns) {
-      assertValidIdentifier(
-        col,
-        'index column',
-        `entity ${className} index [${index.options.columns.join(', ')}]`,
-      )
-    }
-  }
-
-  const resolvedIndexes = indexes.map((index) => {
-    const ctx = `entity ${className} index [${index.options.columns.join(', ')}]`
-    return {
-      columns: index.options.columns,
-      unique: resolveBoolean(index.options.unique, false, `${ctx}.unique`),
-    }
-  })
 
   const createTableAuto = resolveBoolean(options.createTableAuto, true, `entity ${className}.createTableAuto`)
   const addColumnAuto = resolveBoolean(options.addColumnAuto, true, `entity ${className}.addColumnAuto`)
@@ -339,7 +298,7 @@ export function parsePgEntity(
     createTableAuto,
     addColumnAuto,
     createIndexAuto,
-    indexes: resolvedIndexes,
+    indexes,
     key: keyMetadata,
     columns: columnMetadata,
   }
@@ -362,13 +321,13 @@ export function parsePgEntities(
   for (const { node, sourceFile } of classes) {
     if (options.skipInvalid) {
       try {
-        const metadata = parsePgEntity(node, sourceFile) // Steps 3–8
+        const metadata = parsePgEntity(node, sourceFile) // Steps 3–7
         if (metadata) result.push(metadata)
       } catch (err) {
         logger.warn(`Skipping entity "${node.name?.text ?? 'anonymous'}": ${String(err)}`)
       }
     } else {
-      const metadata = parsePgEntity(node, sourceFile) // Steps 3–8
+      const metadata = parsePgEntity(node, sourceFile) // Steps 3–7
       if (metadata) result.push(metadata)
     }
   }
@@ -383,14 +342,6 @@ function getDecorator(node: ts.Node, name: string): ts.Decorator | undefined {
   const decorators = ts.getDecorators(node)
   if (!decorators) return undefined
   return decorators.find((decorator) => isDecoratorNamed(decorator, name))
-}
-
-/** Return every `@<name>` decorator on `node` (call or bare form). */
-function getDecorators(node: ts.Node, name: string): ts.Decorator[] {
-  if (!ts.canHaveDecorators(node)) return []
-  const decorators = ts.getDecorators(node)
-  if (!decorators) return []
-  return decorators.filter((decorator) => isDecoratorNamed(decorator, name))
 }
 
 /** Whether a decorator node is `@<name>` (call or bare form). */
@@ -610,6 +561,52 @@ function assertValidIdentifier(value: string, kind: string, context: string): vo
     logger.error(message)
     throw new Error(message)
   }
+}
+
+/**
+ * Resolve and validate the table's index declarations read from the `indexes`
+ * option of `@PgEntity`.
+ *
+ * Returns an empty array when the option is omitted. Each entry must be an
+ * object literal carrying a non-empty `columns` array of identifier strings;
+ * `unique` defaults to `false`. Column names are validated as identifiers, and
+ * a malformed entry is rejected (logged + thrown) rather than silently ignored.
+ */
+function resolveIndexes(raw: unknown, className: string): PgIndexMetadata[] {
+  if (raw === undefined || raw === null) return []
+
+  if (!Array.isArray(raw)) {
+    const message = `Invalid "indexes" option for entity ${className}: expected an array of index definitions.`
+    logger.error(message)
+    throw new Error(message)
+  }
+
+  return raw.map((entry, position) => {
+    const label = `entity ${className} index #${position + 1}`
+
+    if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
+      const message = `Invalid ${label}: expected an object literal with a "columns" array.`
+      logger.error(message)
+      throw new Error(message)
+    }
+
+    const { columns, unique } = entry as Record<string, unknown>
+    if (!Array.isArray(columns) || columns.length === 0 || columns.some(column => typeof column !== 'string')) {
+      const message = `Invalid ${label}: "columns" must be a non-empty array of column names.`
+      logger.error(message)
+      throw new Error(message)
+    }
+
+    const context = `entity ${className} index [${columns.join(', ')}]`
+    for (const column of columns) {
+      assertValidIdentifier(column, 'index column', context)
+    }
+
+    return {
+      columns: columns as string[],
+      unique: resolveBoolean(unique, false, `${context}.unique`),
+    }
+  })
 }
 
 /** Allowed logical SQL column types. */

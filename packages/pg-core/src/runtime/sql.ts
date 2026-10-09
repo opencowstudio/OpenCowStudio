@@ -5,11 +5,13 @@
 // catalog. Keeping every statement in one place gives the introspection
 // queries a single definition and lets them be reviewed side by side.
 //
-// All templates use positional parameters ($1, $2, …) so callers bind values
-// through `pg` instead of interpolating them into the string, which keeps both
-// identifiers and values safe. The parameter order of each template is
-// documented next to it and is meant to be passed straight to
-// `PgDataSource.query(text, params)` / `PgDataSource.queryRead(text, params)`.
+// Value templates use positional parameters ($1, $2, …) so callers bind values
+// through `pg` instead of interpolating them into the string. DDL that *names*
+// an object (an extension, a schema, a table) cannot bind an identifier, so the
+// name is quoted into the statement instead — see `quoteIdentifier`. The
+// parameter order of each template is documented next to it, and a template is
+// meant to be passed straight to `PgDataSource.query(text, params)` /
+// `PgDataSource.queryRead(text, params)`.
 // ---------------------------------------------------------------------------
 
 /**
@@ -20,12 +22,24 @@
  */
 export const DEFAULT_SCHEMA = 'public'
 
+/**
+ * Quote a PostgreSQL identifier so it can be safely embedded in a statement.
+ *
+ * An identifier cannot be a bind parameter, so DDL interpolates it. Doubling
+ * any embedded double quote follows the PostgreSQL quoting rules and stops the
+ * value from escaping the identifier.
+ */
+function quoteIdentifier(name: string): string {
+  return `"${name.replace(/"/g, '""')}"`
+}
+
 // ---------------------------------------------------------------------------
 // PgSqlTemplate — the runtime's SQL statement catalogue
 //
-// A stateless utility class: every member is a complete statement, so it is
-// never instantiated. Feature code (schema introspection, migration checks,
-// …) reads the templates from here instead of inlining SQL at the call site.
+// A stateless utility class: every member holds or builds a complete statement,
+// so it is never instantiated. Feature code (schema introspection, migration
+// checks, …) reads the templates from here instead of inlining SQL at the call
+// site.
 // ---------------------------------------------------------------------------
 
 /** SQL template utility class: the statements used by the runtime. */
@@ -44,6 +58,20 @@ export class PgSqlTemplate {
    * boot.
    */
   static readonly CREATE_EXTENSION_PG_TRGM = 'CREATE EXTENSION IF NOT EXISTS "pg_trgm"'
+
+  /**
+   * Build the statement that creates a schema when it is missing.
+   *
+   * Parameters: none. The schema name is a DDL identifier, so — unlike the
+   * value templates — it cannot be a bind parameter; it is passed through
+   * `quoteIdentifier` instead, which keeps it injection-safe. `IF NOT EXISTS`
+   * makes the statement idempotent.
+   *
+   * @param schema Schema to create; defaults to {@link DEFAULT_SCHEMA}.
+   */
+  static createSchema(schema: string = PgSqlTemplate.DEFAULT_SCHEMA): string {
+    return `CREATE SCHEMA IF NOT EXISTS ${quoteIdentifier(schema)}`
+  }
 
   /**
    * Create the table that records every executed SQL script.

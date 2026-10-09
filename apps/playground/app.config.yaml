@@ -8,6 +8,6 @@ pg:
     default:
       master:
         url: postgresql://localhost:5432/opencowstudio_dev
-        username: postgres
-        password: postgres
+        username: root
+        password: FYm7JqaEcptxUTgys
       slaves: []

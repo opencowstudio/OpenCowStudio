@@ -1,10 +1,23 @@
 // ---------------------------------------------------------------------------
-// Entity operation contract (runtime)
+// Entity operation contract + repository registry (runtime)
 //
 // `PgEntityRepository<T, K>` is the CRUD surface the runtime implements for a
-// single entity. Entity metadata resolution lives in `builder/parser.ts`
-// (`parsePgEntity` / `parsePgEntities`), which is build-time only.
+// single entity. `PgRepositoryManager` owns that surface for every scanned
+// entity: it is constructed with the `PgDataSourceManager` so each repository
+// can resolve its datasource from the entity's `dbName`, and turns a metadata
+// collection into the repository registry.
+//
+// Bootstrapping the registry also means bootstrapping the storage it needs:
+// `createRepositories` first ensures every schema the entities live in exists,
+// then builds the repositories themselves.
+//
+// Entity metadata resolution lives in `builder/parser.ts` (`parsePgEntity` /
+// `parsePgEntities`), which is build-time only.
 // ---------------------------------------------------------------------------
+
+import { PgSqlTemplate } from './sql'
+import type { PgDataSourceManager } from './datasource'
+import type { PgEntityMetadata } from '../shared/types.ts'
 
 /**
  * Entity operation contract: the common CRUD surface for a single entity.
@@ -24,4 +37,73 @@ export interface PgEntityRepository<T, K = string | number> {
 
   /** Return the row whose key equals `id`, or `null` when it does not exist. */
   findById(id: K): Promise<T | null>
+}
+
+// ---------------------------------------------------------------------------
+// PgRepositoryManager — the repository registry
+//
+// Holds one repository per entity. It never creates a connection of its own:
+// the `PgDataSourceManager` handed to the constructor is the single source of
+// pools, and each repository looks up its datasource through it.
+// ---------------------------------------------------------------------------
+
+/**
+ * Repository registry for every scanned entity.
+ *
+ * Depends on the {@link PgDataSourceManager} at construction time; repositories
+ * added through {@link PgRepositoryManager.createRepositories} resolve their
+ * datasource from it via the entity's `dbName`.
+ */
+export class PgRepositoryManager {
+  private readonly dataSources: PgDataSourceManager
+
+  constructor(dataSources: PgDataSourceManager) {
+    this.dataSources = dataSources
+  }
+
+  /**
+   * Prepare the storage for `entities`, then create and register a repository
+   * for each of them.
+   *
+   * The schemas are ensured first, so a repository can assume its table's
+   * schema already exists.
+   *
+   * @param entities The resolved entity metadata to build repositories from.
+   */
+  async createRepositories(entities: PgEntityMetadata[]): Promise<void> {
+    await this.createSchemas(entities)
+
+    // Repository creation is not implemented yet.
+  }
+
+  /**
+   * Ensure every schema referenced by `entities` exists.
+   *
+   * The entities are grouped by `dbName` and the schema names within a database
+   * are de-duplicated, so each datasource receives exactly one script that
+   * creates all of its missing schemas. Every statement is idempotent, and the
+   * script is sent as a single parameterless query, so it is applied over one
+   * connection in one round trip.
+   *
+   * @param entities The resolved entity metadata to collect schemas from.
+   */
+  private async createSchemas(entities: PgEntityMetadata[]): Promise<void> {
+    // dbName -> ordered, de-duplicated schema names.
+    const schemasByDatabase = new Map<string, Set<string>>()
+    for (const entity of entities) {
+      let schemas = schemasByDatabase.get(entity.dbName)
+      if (!schemas) {
+        schemas = new Set<string>()
+        schemasByDatabase.set(entity.dbName, schemas)
+      }
+      schemas.add(entity.schema)
+    }
+
+    for (const [dbName, schemas] of schemasByDatabase) {
+      const script = [...schemas]
+        .map(schema => PgSqlTemplate.createSchema(schema))
+        .join(';\n')
+      await this.dataSources.get(dbName).query(script)
+    }
+  }
 }

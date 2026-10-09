@@ -31,5 +31,5 @@ export async function setupModule(options: ModuleOptions, nuxt: Nuxt): Promise<v
   registerPgManifest(nuxt, options.configFile!)
 
   // Register the Nitro plugin that instantiates the datasource manager.
-  addServerPlugin(resolver.resolve('./runtime/plugins/bootstrap'))
+  addServerPlugin(resolver.resolve('../runtime/plugins/bootstrap'))
 }

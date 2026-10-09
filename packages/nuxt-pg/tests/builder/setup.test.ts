@@ -50,7 +50,7 @@ describe('setupModule', () => {
     ])
     expect(registerPgManifest).toHaveBeenCalledWith(nuxt, 'app.config.yaml')
     expect(addServerPlugin).toHaveBeenCalledWith(
-      './runtime/plugins/bootstrap',
+      '../runtime/plugins/bootstrap',
     )
   })
 })

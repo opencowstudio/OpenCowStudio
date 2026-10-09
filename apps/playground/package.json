@@ -3,6 +3,7 @@
   "type": "module",
   "private": true,
   "scripts": {
+    "predev": "nuxt cleanup",
     "dev": "nuxt dev --open",
     "dev:test": "nuxt dev --dotenv .env.test --open",
     "dev:prod": "nuxt dev --dotenv .env.production --open",
@@ -18,6 +19,7 @@
   },
   "dependencies": {
     "@opencowstudio/nuxt-pg": "workspace:*",
+    "@opencowstudio/pg-core": "workspace:*",
     "nuxt": "^4.4.6",
     "vue": "^3.5.34",
     "vue-router": "^5.0.7"

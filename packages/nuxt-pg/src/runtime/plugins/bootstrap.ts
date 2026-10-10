@@ -43,6 +43,10 @@ export default defineNitroPlugin(async () => {
     `PgDataSourceManager initialized (databases: ${manager.dbNames.join(', ') || 'none'})`,
   )
 
+  // Run the per-database initialization SQL (extensions & bookkeeping tables)
+  // on every datasource before the repositories are built.
+  await manager.initializeSql()
+
   // The entity manifest carries the scanned entity metadata as a JSON string.
   // A malformed payload must not abort startup, so it is logged and skipped.
   let entities: PgEntityMetadata[]

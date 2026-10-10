@@ -12,12 +12,15 @@ const bootstrapPath = fileURLToPath(
 )
 
 function mockRuntime(pgConfig: PgConfigMetadata | null, entities: PgEntityMetadata[] = []) {
-  // Constructable spy standing in for the real `PgDataSourceManager`.
+  // Constructable spy standing in for the real `PgDataSourceManager`. It records
+  // the `initializeSql` call the plugin makes after construction.
+  const initializeSql = vi.fn()
   const PgDataSourceManagerSpy = vi.fn().mockImplementation(function (
-    this: { dbNames: string[] },
+    this: { dbNames: string[]; initializeSql: () => Promise<void> },
     config: PgConfigMetadata,
   ) {
     this.dbNames = Object.keys(config.databases)
+    this.initializeSql = initializeSql
   })
 
   // Constructable spy standing in for the real `PgRepositoryManager`. It records
@@ -43,7 +46,7 @@ function mockRuntime(pgConfig: PgConfigMetadata | null, entities: PgEntityMetada
   vi.doMock('#pg-manifest', () => ({ pgConfigJson }))
   vi.doMock('#pg-entities-manifest', () => ({ pgEntitiesJson }))
 
-  return { PgDataSourceManagerSpy, PgRepositoryManagerSpy, createRepositories }
+  return { PgDataSourceManagerSpy, PgRepositoryManagerSpy, createRepositories, initializeSql }
 }
 
 describe('bootstrap nitro plugin', () => {
@@ -70,7 +73,8 @@ describe('bootstrap nitro plugin', () => {
       },
     }
     vi.resetModules()
-    const { PgDataSourceManagerSpy, PgRepositoryManagerSpy, createRepositories } = mockRuntime(cfg)
+    const { PgDataSourceManagerSpy, PgRepositoryManagerSpy, createRepositories, initializeSql } =
+      mockRuntime(cfg)
     const mod = await import(bootstrapPath)
     const handler = mod.default as () => void | Promise<void>
     await handler()
@@ -80,6 +84,8 @@ describe('bootstrap nitro plugin', () => {
     expect(PgDataSourceManagerSpy).toHaveBeenCalledTimes(1)
     // The plugin parses the manifest's JSON string back into the metadata.
     expect(PgDataSourceManagerSpy).toHaveBeenCalledWith(cfg)
+    // The plugin runs the per-database initialization SQL on the manager.
+    expect(initializeSql).toHaveBeenCalledTimes(1)
 
     // The repository manager is built from the datasource manager and seeded
     // with the entities parsed from the entity manifest (none here).

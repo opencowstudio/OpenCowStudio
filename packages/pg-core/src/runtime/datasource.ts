@@ -63,24 +63,22 @@ export class PgDataSource {
   readonly slaves: Pool[]
   private slaveCursor = 0
 
-  constructor(database: PgDatabaseMetadata, pool: PgPoolMetadata, dbName = 'default') {
+  constructor(database: PgDatabaseMetadata, pool: PgPoolMetadata) {
     this.master = defaultPoolFactory(database.master, pool)
     this.slaves = database.slaves.map(s => defaultPoolFactory(s, pool))
-    // Triggered, not awaited: the bootstrap reports its outcome through the
-    // log and nothing here depends on it having finished.
-    void this.initializeSql(dbName)
   }
 
   /**
    * Run the initialization script on the master node: the `pg_trgm` extension
    * plus the table that records executed SQL scripts, in one round trip.
    *
-   * Fire-and-forget by design: the DDL is triggered at construction time and
-   * its outcome is reported through the log. Missing privileges, an unreachable
-   * master or a missing contrib module are not fatal here — the features that
-   * depend on them fail later with their own explicit error.
+   * Invoked explicitly (never from the constructor) via
+   * `PgDataSourceManager.initializeSql`; `dbName` is only used to tag the log
+   * output. Its outcome is reported through the log: missing privileges, an
+   * unreachable master or a missing contrib module are not fatal here — the
+   * features that depend on them fail later with their own explicit error.
    */
-  private async initializeSql(dbName: string): Promise<void> {
+  async initializeSql(dbName: string): Promise<void> {
     logger.info(`Database "${dbName}": running initialization SQL on the master ...`)
 
     try {
@@ -137,10 +135,22 @@ export class PgDataSourceManager {
   constructor(config: PgConfigMetadata, defaultDbName = 'default') {
     this.defaultDbName = defaultDbName
     this.sources = new Map()
-    // Each datasource triggers its own extension bootstrap in the background.
     for (const [dbName, dbConfig] of Object.entries(config.databases)) {
-      this.sources.set(dbName, new PgDataSource(dbConfig, config.pool, dbName))
+      this.sources.set(dbName, new PgDataSource(dbConfig, config.pool))
     }
+  }
+
+  /**
+   * Run the initialization SQL on every datasource (its master node), in
+   * parallel.
+   *
+   * `PgDataSource.initializeSql` handles its own failures, so this never
+   * rejects: it resolves once every initialization attempt has settled.
+   */
+  async initializeSql(): Promise<void> {
+    await Promise.all(
+      [...this.sources.entries()].map(([dbName, ds]) => ds.initializeSql(dbName)),
+    )
   }
 
   /** Return the datasource for `dbName`, or the default one when omitted. */

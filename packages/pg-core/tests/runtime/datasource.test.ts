@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import { PgDataSource, PgDataSourceManager } from '../../src'
 import type {
   PgConfigMetadata,
@@ -82,6 +82,20 @@ describe('PgDataSource', () => {
 
     await ds.end()
   })
+
+  it('should not run the initialization SQL on construction', () => {
+    // Construction is now side-effect free: the DDL is only triggered through
+    // the manager's `initializeSql`.
+    const spy = vi.spyOn(PgDataSource.prototype, 'initializeSql').mockResolvedValue()
+    try {
+      const ds = new PgDataSource(DEFAULT_DB, POOL)
+      deferClose(() => ds.end())
+
+      expect(spy).not.toHaveBeenCalled()
+    } finally {
+      spy.mockRestore()
+    }
+  })
 })
 
 describe('PgDataSourceManager', () => {
@@ -115,6 +129,20 @@ describe('PgDataSourceManager', () => {
     const mgr = new PgDataSourceManager(CONFIG)
 
     await mgr.endAll()
+  })
+
+  it('should run the initialization SQL on every datasource', async () => {
+    const spy = vi.spyOn(PgDataSource.prototype, 'initializeSql').mockResolvedValue()
+    try {
+      const mgr = new PgDataSourceManager(CONFIG)
+      deferClose(() => mgr.endAll())
+
+      await mgr.initializeSql()
+
+      expect(spy).toHaveBeenCalledWith('default')
+    } finally {
+      spy.mockRestore()
+    }
   })
 })
 

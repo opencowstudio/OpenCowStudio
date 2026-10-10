@@ -15,9 +15,13 @@
 // `parsePgEntities`), which is build-time only.
 // ---------------------------------------------------------------------------
 
+import { consola } from 'consola'
 import { PgSqlTemplate } from './sql'
 import type { PgDataSourceManager } from './datasource'
 import type { PgEntityMetadata } from '../shared/types.ts'
+
+// Tagged logger so the core stays framework-agnostic (no Nuxt dep).
+const logger = consola.withTag('pg-repository')
 
 /**
  * Entity operation contract: the common CRUD surface for a single entity.
@@ -100,10 +104,13 @@ export class PgRepositoryManager {
     }
 
     for (const [dbName, schemas] of schemasByDatabase) {
-      const script = [...schemas]
+      const names = [...schemas]
+      const script = names
         .map(schema => PgSqlTemplate.createSchema(schema))
         .join(';\n')
+      logger.info(`Database "${dbName}": ensuring schemas [${names.join(', ')}] ...`)
       await this.dataSources.get(dbName).query(script)
+      logger.success(`Database "${dbName}": schemas ready [${names.join(', ')}]`)
     }
   }
 }

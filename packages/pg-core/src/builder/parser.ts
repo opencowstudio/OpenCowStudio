@@ -274,6 +274,7 @@ export function parsePgEntity(
     column: KEY_COLUMN,
     generated: resolveBoolean(key.options.generated, true, `key ${key.propertyKey}.generated on ${className}`),
     comment: key.options.comment ?? '',
+    columnType: 'TEXT',
   }
 
   // --- column fields ---

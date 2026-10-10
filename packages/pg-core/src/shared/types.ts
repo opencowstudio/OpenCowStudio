@@ -59,6 +59,7 @@ export interface PgKeyMetadata {
   column: string
   generated: boolean
   comment: string
+  columnType: PgColumnType
 }
 
 /** Metadata stored for each @PgColumn-decorated property */

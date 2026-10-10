@@ -75,7 +75,7 @@ export class PgRepositoryManager {
    * @param entities The resolved entity metadata to build repositories from.
    */
   async createRepositories(entities: PgEntityMetadata[]): Promise<void> {
-    await this.createSchemas(entities)
+    await this.ensureSchemas(entities)
 
     // Repository creation is not implemented yet.
   }
@@ -91,7 +91,7 @@ export class PgRepositoryManager {
    *
    * @param entities The resolved entity metadata to collect schemas from.
    */
-  private async createSchemas(entities: PgEntityMetadata[]): Promise<void> {
+  private async ensureSchemas(entities: PgEntityMetadata[]): Promise<void> {
     // dbName -> ordered, de-duplicated schema names.
     const schemasByDatabase = new Map<string, Set<string>>()
     for (const entity of entities) {

@@ -9,7 +9,7 @@
 //
 // Bootstrapping the registry also means bootstrapping the storage it needs:
 // `createRepositories` first ensures every schema the entities live in exists,
-// then builds the repositories themselves.
+// then every entity's table, before building the repositories themselves.
 //
 // Entity metadata resolution lives in `builder/parser.ts` (`parsePgEntity` /
 // `parsePgEntities`), which is build-time only.
@@ -43,6 +43,23 @@ export interface PgEntityRepository<T, K = string | number> {
   findById(id: K): Promise<T | null>
 }
 
+/**
+ * One column of a table as reported by the PostgreSQL catalog.
+ *
+ * Mirrors the columns selected by `PgSqlTemplate.COLUMN_DEFINITIONS`, so the
+ * property names match the catalog's snake_case column aliases.
+ */
+export interface PgColumnDefinition {
+  /** column name */
+  column_name: string
+  /** full SQL type, e.g. `double precision`, `timestamp with time zone` */
+  data_type: string
+  /** underlying type name, e.g. `float8`, `timestamptz` */
+  udt_name: string
+  /** column default expression, or `null` when the column has none */
+  column_default: string | null
+}
+
 // ---------------------------------------------------------------------------
 // PgRepositoryManager — the repository registry
 //
@@ -69,15 +86,67 @@ export class PgRepositoryManager {
    * Prepare the storage for `entities`, then create and register a repository
    * for each of them.
    *
-   * The schemas are ensured first, so a repository can assume its table's
-   * schema already exists.
+   * The schemas are ensured first, so a table can assume its schema already
+   * exists; every entity's table is then ensured (see
+   * {@link PgRepositoryManager.ensureTable}) before its repository is built.
    *
    * @param entities The resolved entity metadata to build repositories from.
    */
   async createRepositories(entities: PgEntityMetadata[]): Promise<void> {
     await this.ensureSchemas(entities)
 
+    for (const entity of entities) {
+      await this.ensureTable(entity)
+    }
+
     // Repository creation is not implemented yet.
+  }
+
+  /**
+   * Read the column definitions of an entity's table.
+   *
+   * Runs {@link PgSqlTemplate.COLUMN_DEFINITIONS} against the entity's
+   * datasource, binding the entity's schema and table. The query targets the
+   * master node so the result reflects any DDL already applied during the same
+   * bootstrap, rather than a possibly lagging replica.
+   *
+   * Returns one row per column in declaration order (the catalog is ordered by
+   * `ordinal_position`), or an empty array when the table does not exist yet.
+   *
+   * @param entity The entity metadata whose table is introspected.
+   */
+  async getColumnDefinitions(entity: PgEntityMetadata): Promise<PgColumnDefinition[]> {
+    const result = (await this.dataSources
+      .get(entity.dbName)
+      .query(PgSqlTemplate.COLUMN_DEFINITIONS, [entity.schema, entity.table])) as {
+      rows: PgColumnDefinition[]
+    }
+    return result.rows
+  }
+
+  /**
+   * Ensure the table backing an entity exists.
+   *
+   * Introspects the entity's table first (see
+   * {@link PgRepositoryManager.getColumnDefinitions}): when it already has
+   * columns, nothing is created. Otherwise the table is created from
+   * {@link PgSqlTemplate.createTable} — the statement is `CREATE TABLE IF NOT
+   * EXISTS`, so it stays safe if the table appears in between.
+   *
+   * @param entity The entity metadata whose table is ensured.
+   */
+  async ensureTable(entity: PgEntityMetadata): Promise<void> {
+    const label = `"${entity.schema}"."${entity.table}"`
+    logger.info(`Database "${entity.dbName}": ensuring table ${label} ...`)
+
+    const existing = await this.getColumnDefinitions(entity)
+    if (existing.length > 0) {
+      logger.success(`Database "${entity.dbName}": table ${label} already exists`)
+      return
+    }
+
+    await this.dataSources.get(entity.dbName).query(PgSqlTemplate.createTable(entity))
+    logger.success(`Database "${entity.dbName}": table ${label} created`)
   }
 
   /**

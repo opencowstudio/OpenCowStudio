@@ -30,6 +30,7 @@ export type {
 // Column primitives, entity metadata and configuration metadata types.
 export type {
   PgColumnType,
+  PgColumnDefault,
   PgEntityMetadata,
   PgKeyMetadata,
   PgColumnMetadata,
@@ -43,7 +44,7 @@ export type {
 // === runtime ===============================================================
 
 // Entity operation contract (CRUD).
-export type { PgEntityRepository } from './runtime/repository'
+export type { PgEntityRepository, PgColumnDefinition } from './runtime/repository'
 
 // Repository registry (one repository per scanned entity).
 export { PgRepositoryManager } from './runtime/repository'

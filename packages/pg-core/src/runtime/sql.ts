@@ -14,6 +14,8 @@
 // `PgDataSource.queryRead(text, params)`.
 // ---------------------------------------------------------------------------
 
+import type { PgColumnDefault, PgColumnType, PgEntityMetadata, PgIndexMetadata } from '../shared/types.ts'
+
 /**
  * Default schema assumed when an entity does not declare one.
  *
@@ -31,6 +33,77 @@ export const DEFAULT_SCHEMA = 'public'
  */
 function quoteIdentifier(name: string): string {
   return `"${name.replace(/"/g, '""')}"`
+}
+
+/**
+ * Map a logical `PgColumnType` to the PostgreSQL column type it is stored as.
+ *
+ * `JSON_OBJECT` and `JSON_ARRAY` both map to `JSONB` — PostgreSQL's binary JSON
+ * type. `DOUBLE` and `DATE` map to `DOUBLE PRECISION` and `TIMESTAMPTZ`, the
+ * catalog shapes referenced by {@link COLUMN_DEFINITIONS}.
+ */
+const COLUMN_TYPE_SQL: Record<PgColumnType, string> = {
+  BIGINT: 'BIGINT',
+  INT: 'INTEGER',
+  DOUBLE: 'DOUBLE PRECISION',
+  BOOLEAN: 'BOOLEAN',
+  JSON_OBJECT: 'JSONB',
+  JSON_ARRAY: 'JSONB',
+  TEXT: 'TEXT',
+  DATE: 'TIMESTAMPTZ',
+}
+
+/** Quote a value as a PostgreSQL string literal, doubling embedded quotes. */
+function quoteLiteral(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`
+}
+
+/**
+ * Build the `DEFAULT <literal>` clause for a column's normalised default.
+ *
+ * Returns an empty string when the default is `null` (or `undefined`) or a
+ * `Date`, so the clause is omitted and PostgreSQL applies its own implicit
+ * default. The value is categorised by its JavaScript type, which the builder
+ * already derived from the column type: numbers and booleans are inlined
+ * unquoted (`true` / `false`), `TEXT` strings are quoted, and the JSON shapes
+ * (an object / array) are quoted as JSON text.
+ */
+function columnDefaultClause(value: PgColumnDefault): string {
+  if (value === null || value === undefined) return ''
+  if (value instanceof Date) return ''
+  if (typeof value === 'number') return ` DEFAULT ${value}`
+  if (typeof value === 'boolean') return ` DEFAULT ${value}`
+  if (typeof value === 'string') return ` DEFAULT ${quoteLiteral(value)}`
+  return ` DEFAULT ${quoteLiteral(JSON.stringify(value))}`
+}
+
+/** Build a schema-qualified, quoted table reference: `"schema"."table"`. */
+function qualifyTable(schema: string, table: string): string {
+  return `${quoteIdentifier(schema)}.${quoteIdentifier(table)}`
+}
+
+/**
+ * Maximum length of the `<table>_<col>…` part of an index name.
+ *
+ * PostgreSQL truncates identifiers to 63 bytes. The name also carries a `_idx`
+ * / `_uq` / `_gin` suffix (4 characters including the separator), so the base is
+ * cut to 59 to keep the whole name within 63 characters.
+ */
+const INDEX_NAME_BASE_MAX_LENGTH = 59
+
+/**
+ * Derive the name of an index from its table and definition.
+ *
+ * The name is `<table>_<col>…_<suffix>`: the table and columns are joined with
+ * underscores and cut to {@link INDEX_NAME_BASE_MAX_LENGTH} characters, then a
+ * `gin` (GIN index), `uq` (unique index) or `idx` (any other index) suffix is
+ * appended. Including the table keeps the name unique across the schema
+ * (PostgreSQL requires index names to be unique per schema).
+ */
+function indexName(table: string, index: PgIndexMetadata): string {
+  const suffix = index.gin ? 'gin' : index.unique ? 'uq' : 'idx'
+  const base = [table, ...index.columns].join('_')
+  return `${base.slice(0, INDEX_NAME_BASE_MAX_LENGTH)}_${suffix}`
 }
 
 // ---------------------------------------------------------------------------
@@ -71,6 +144,86 @@ export class PgSqlTemplate {
    */
   static createSchema(schema: string = PgSqlTemplate.DEFAULT_SCHEMA): string {
     return `CREATE SCHEMA IF NOT EXISTS ${quoteIdentifier(schema)}`
+  }
+
+  /**
+   * Build the `CREATE TABLE` script for an entity.
+   *
+   * The table is created with `IF NOT EXISTS`, so the statement is idempotent.
+   * The key column is emitted first and carries the `PRIMARY KEY` constraint;
+   * the regular columns follow in declaration order, each carrying the `DEFAULT`
+   * clause built from its normalised default when it has one — `null` and `Date`
+   * defaults are omitted (see {@link columnDefaultClause}). Identifiers cannot
+   * be bind parameters, so the schema, table and column names are quoted with
+   * `quoteIdentifier`.
+   *
+   * When the entity — or any of its columns — declares a comment, the matching
+   * `COMMENT ON TABLE` / `COMMENT ON COLUMN` statements are appended, and every
+   * declared index is emitted through {@link PgSqlTemplate.createIndex}, so the
+   * returned string is a complete, runnable script (statements separated by
+   * `;`).
+   *
+   * @param metadata The resolved entity metadata to build the script from.
+   */
+  static createTable(metadata: PgEntityMetadata): string {
+    const tableRef = qualifyTable(metadata.schema, metadata.table)
+
+    const columnDefinitions = [
+      `${quoteIdentifier(metadata.key.column)} ${COLUMN_TYPE_SQL[metadata.key.columnType]} PRIMARY KEY`,
+      ...metadata.columns.map(
+        column =>
+          `${quoteIdentifier(column.column)} ${COLUMN_TYPE_SQL[column.columnType]}${columnDefaultClause(column.default)}`,
+      ),
+    ]
+
+    const statements = [
+      `CREATE TABLE IF NOT EXISTS ${tableRef} (\n${columnDefinitions.map(definition => `  ${definition}`).join(',\n')}\n)`,
+    ]
+
+    if (metadata.comment) {
+      statements.push(`COMMENT ON TABLE ${tableRef} IS ${quoteLiteral(metadata.comment)}`)
+    }
+    if (metadata.key.comment) {
+      statements.push(
+        `COMMENT ON COLUMN ${tableRef}.${quoteIdentifier(metadata.key.column)} IS ${quoteLiteral(metadata.key.comment)}`,
+      )
+    }
+    for (const column of metadata.columns) {
+      if (column.comment) {
+        statements.push(
+          `COMMENT ON COLUMN ${tableRef}.${quoteIdentifier(column.column)} IS ${quoteLiteral(column.comment)}`,
+        )
+      }
+    }
+    for (const index of metadata.indexes) {
+      statements.push(PgSqlTemplate.createIndex(metadata.schema, metadata.table, index))
+    }
+
+    return statements.join(';\n')
+  }
+
+  /**
+   * Build the statement that creates a table index.
+   *
+   * The access method follows the index metadata: a `unique` index becomes
+   * `CREATE UNIQUE INDEX`, while a `gin` index adds `USING gin` and the
+   * `gin_trgm_ops` operator class to every column (the trigram class requires
+   * the `pg_trgm` extension). The two are mutually exclusive (enforced by the
+   * builder parser). The index is named deterministically (see `indexName`) and
+   * created with `IF NOT EXISTS`, so the statement is idempotent.
+   *
+   * @param schema Schema the indexed table lives in.
+   * @param table Table the index is created on.
+   * @param index The resolved index metadata to build the statement from.
+   */
+  static createIndex(schema: string, table: string, index: PgIndexMetadata): string {
+    const tableRef = qualifyTable(schema, table)
+    const columns = index.gin
+      ? index.columns.map(column => `${quoteIdentifier(column)} gin_trgm_ops`).join(', ')
+      : index.columns.map(quoteIdentifier).join(', ')
+    const unique = index.unique ? 'UNIQUE ' : ''
+    const using = index.gin ? ' USING gin' : ''
+    return `CREATE ${unique}INDEX IF NOT EXISTS ${quoteIdentifier(indexName(table, index))} ON ${tableRef}${using} (${columns})`
   }
 
   /**

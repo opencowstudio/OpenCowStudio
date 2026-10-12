@@ -43,14 +43,18 @@ export interface PgColumnOptions {
   comment?: string
   /** logical SQL column type; must be declared on every column field */
   columnType?: PgColumnType
+  /** raw default value as a string; parsed into PgColumnMetadata.default */
+  default?: string
 }
 
 /** Options for a single table index, declared through `PgEntityOptions.indexes` */
 export interface PgIndexOptions {
-  /** list of column names that form the index */
+  /** index columns, by property key or column name; normalised to snake_case and must match an entity column/key */
   columns: string[]
   /** whether the index is unique, default false */
   unique?: boolean
+  /** whether the index uses the GIN access method, default false */
+  gin?: boolean
 }
 
 /** Options for @PgEntity decorator */

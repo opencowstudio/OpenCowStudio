@@ -27,9 +27,9 @@ describe('builder parser — parsePgEntities (resolution)', () => {
     // omitted booleans fall back to their defaults
     expect(meta.addColumnAuto).toBe(true)
     expect(meta.createIndexAuto).toBe(true)
-    expect(meta.key).toEqual({ propertyKey: 'id', column: 'id', generated: false, comment: '' })
+    expect(meta.key).toEqual({ propertyKey: 'id', column: 'id', generated: false, comment: '', columnType: 'TEXT' })
     expect(meta.columns).toEqual([
-      { propertyKey: 'name', column: 'name', comment: 'a comment', columnType: 'TEXT' },
+      { propertyKey: 'name', column: 'name', comment: 'a comment', columnType: 'TEXT', default: '' },
     ])
   })
 
@@ -67,7 +67,7 @@ describe('builder parser — parsePgEntities (resolution)', () => {
 
   it('should resolve the indexes declared on @PgEntity into index metadata', () => {
     const meta = parseOne('indexed.ts')
-    expect(meta.indexes).toEqual([{ columns: ['email'], unique: true }])
+    expect(meta.indexes).toEqual([{ columns: ['email'], unique: true, gin: false }])
   })
 
   it('should return an empty array for a class without @PgEntity', () => {
@@ -99,9 +99,9 @@ describe('builder parser — parsePgEntities (filesystem Program)', () => {
     expect(meta.table).toBe('users')
     expect(meta.schema).toBe('public')
     expect(meta.comment).toBe('Application users')
-    expect(meta.key).toEqual({ propertyKey: 'id', column: 'id', generated: false, comment: '' })
+    expect(meta.key).toEqual({ propertyKey: 'id', column: 'id', generated: false, comment: '', columnType: 'TEXT' })
     expect(meta.columns.map(c => c.propertyKey).sort()).toEqual(['createdAt', 'displayName', 'email'])
-    expect(meta.indexes).toEqual([{ columns: ['email'], unique: true }])
+    expect(meta.indexes).toEqual([{ columns: ['email'], unique: true, gin: false }])
   })
 
   it('should parse multiple entity files at once', () => {

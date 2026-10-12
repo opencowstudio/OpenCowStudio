@@ -7,6 +7,7 @@ import type {
   PgKeyOptions,
 } from './decorators.ts'
 import type {
+  PgColumnMetadata,
   PgColumnType,
   PgEntityMetadata,
   PgIndexMetadata,
@@ -245,7 +246,6 @@ export function parsePgEntity(
   const className = node.name.text
   const options = parseClassDecorator(entityDecorator, sourceFile) // Step 3
   const { key, columns } = parsePropertyDecorators(node.members, sourceFile) // Step 4
-  const indexes = resolveIndexes(options.indexes, className)
 
   if (!key) {
     const message = `Entity "${className}" declares no @PgKey field; an entity must declare exactly one @PgKey.`
@@ -258,9 +258,9 @@ export function parsePgEntity(
   const schema = options.schema?.trim() ? options.schema : 'public'
   const table = options.table?.trim() ? options.table : toSnakeCase(className)
 
-  assertValidIdentifier(dbName, 'dbName', `entity ${className}`)
-  assertValidIdentifier(schema, 'schema', `entity ${className}`)
-  assertValidIdentifier(table, 'table', `entity ${className}`)
+  assertValidPgName(dbName, 'dbName', `entity ${className}`)
+  assertValidPgName(schema, 'schema', `entity ${className}`)
+  assertValidPgName(table, 'table', `entity ${className}`)
 
   const createTableAuto = resolveBoolean(options.createTableAuto, true, `entity ${className}.createTableAuto`)
   const addColumnAuto = resolveBoolean(options.addColumnAuto, true, `entity ${className}.addColumnAuto`)
@@ -280,16 +280,22 @@ export function parsePgEntity(
   // --- column fields ---
   const columnMetadata = columns.map((c) => {
     const propertyKey = c.propertyKey
+    const context = `column ${propertyKey} on ${className}`
     const column = c.options.column?.trim() ? c.options.column : toSnakeCase(propertyKey)
-    assertValidIdentifier(column, 'column', `column ${propertyKey} on ${className}`)
-    const columnType = resolveColumnType(c.options.columnType, `column ${propertyKey} on ${className}`)
+    assertValidPgName(column, 'column', context)
+    const columnType = resolveColumnType(c.options.columnType, context)
     return {
       propertyKey,
       column,
       comment: c.options.comment ?? '',
       columnType,
+      default: resolveColumnDefault(c.options.default, columnType, context),
     }
   })
+
+  // --- index fields ---
+  // Resolved last: an index is validated against the key and the columns above.
+  const indexes = resolveIndexes(options.indexes, className, keyMetadata, columnMetadata)
 
   return {
     dbName,
@@ -548,17 +554,30 @@ function toSnakeCase(name: string): string {
     .toLowerCase()
 }
 
-/** Allowed pattern for PostgreSQL identifiers: alphanumeric and underscore. */
-const IDENTIFIER_RE = /^[a-zA-Z0-9_]+$/
+/**
+ * Allowed pattern for a PostgreSQL name: the characters `a-zA-Z0-9_` only.
+ *
+ * Every schema, table, index and column name parsed by the builder is checked
+ * against this pattern before any metadata object is built.
+ */
+const NAME_RE = /^[a-zA-Z0-9_]+$/
 
 /**
- * Validate that `value` is a legal PostgreSQL identifier.
+ * Validate that `name` is a legal PostgreSQL name.
  *
- * Throws an Error (with detailed context) and logs to stderr when invalid.
+ * Only the characters `a-zA-Z0-9_` are allowed. A non-compliant name is
+ * rejected (logged + thrown), so no metadata object is ever built from an
+ * invalid schema, table, index or column name.
+ *
+ * @param name The name to validate.
+ * @param kind The kind of name — `schema`, `table`, `index`, `column`, … — used
+ * in the diagnostic message.
+ * @param context Where the name was declared (the entity / column it belongs
+ * to), used in the diagnostic message.
  */
-function assertValidIdentifier(value: string, kind: string, context: string): void {
-  if (!IDENTIFIER_RE.test(value)) {
-    const message = `Invalid ${kind} "${value}": must match ${IDENTIFIER_RE} (alphanumeric and underscore only). Context: ${context}`
+export function assertValidPgName(name: string, kind: string, context: string): void {
+  if (!NAME_RE.test(name)) {
+    const message = `Invalid ${kind} "${name}" for ${context}: only characters [a-zA-Z0-9_] are allowed.`
     logger.error(message)
     throw new Error(message)
   }
@@ -569,11 +588,25 @@ function assertValidIdentifier(value: string, kind: string, context: string): vo
  * option of `@PgEntity`.
  *
  * Returns an empty array when the option is omitted. Each entry must be an
- * object literal carrying a non-empty `columns` array of identifier strings;
- * `unique` defaults to `false`. Column names are validated as identifiers, and
- * a malformed entry is rejected (logged + thrown) rather than silently ignored.
+ * object literal carrying a non-empty `columns` array of strings; `unique` and
+ * `gin` default to `false`. Every declared name is normalised with
+ * `toSnakeCase` into its column form, then checked against the entity: it must
+ * resolve to the key column or to one of the declared columns (`keyMetadata` /
+ * `columnMetadata`), otherwise the entry is rejected (logged + thrown) rather
+ * than silently ignored. Because a unique B-tree index and a GIN index are
+ * distinct access methods, `unique` and `gin` are mutually exclusive.
+ *
+ * @param raw The raw `indexes` option read from the decorator source.
+ * @param className The entity class name, used in diagnostics.
+ * @param keyMetadata The already-resolved key, so the key column is indexable.
+ * @param columnMetadata The already-resolved columns, so they are indexable.
  */
-function resolveIndexes(raw: unknown, className: string): PgIndexMetadata[] {
+function resolveIndexes(
+  raw: unknown,
+  className: string,
+  keyMetadata: PgKeyMetadata,
+  columnMetadata: PgColumnMetadata[],
+): PgIndexMetadata[] {
   if (raw === undefined || raw === null) return []
 
   if (!Array.isArray(raw)) {
@@ -581,6 +614,12 @@ function resolveIndexes(raw: unknown, className: string): PgIndexMetadata[] {
     logger.error(message)
     throw new Error(message)
   }
+
+  // Every column an index may reference: the key column plus the regular ones.
+  const knownColumns = new Set<string>([
+    keyMetadata.column,
+    ...columnMetadata.map(column => column.column),
+  ])
 
   return raw.map((entry, position) => {
     const label = `entity ${className} index #${position + 1}`
@@ -591,21 +630,39 @@ function resolveIndexes(raw: unknown, className: string): PgIndexMetadata[] {
       throw new Error(message)
     }
 
-    const { columns, unique } = entry as Record<string, unknown>
+    const { columns, unique, gin } = entry as Record<string, unknown>
     if (!Array.isArray(columns) || columns.length === 0 || columns.some(column => typeof column !== 'string')) {
       const message = `Invalid ${label}: "columns" must be a non-empty array of column names.`
       logger.error(message)
       throw new Error(message)
     }
 
-    const context = `entity ${className} index [${columns.join(', ')}]`
-    for (const column of columns) {
-      assertValidIdentifier(column, 'index column', context)
+    const context = `entity ${className} index [${(columns as string[]).join(', ')}]`
+
+    // Normalise each declared name to its column form and check it resolves to
+    // the entity's key or one of its columns.
+    const indexColumns = (columns as string[]).map((declared) => {
+      const column = toSnakeCase(declared)
+      if (!knownColumns.has(column)) {
+        const message = `Invalid ${context}: column "${declared}" is not a key or column of entity ${className}.`
+        logger.error(message)
+        throw new Error(message)
+      }
+      return column
+    })
+
+    const resolvedUnique = resolveBoolean(unique, false, `${context}.unique`)
+    const resolvedGin = resolveBoolean(gin, false, `${context}.gin`)
+    if (resolvedUnique && resolvedGin) {
+      const message = `Invalid ${context}: "unique" and "gin" cannot both be true.`
+      logger.error(message)
+      throw new Error(message)
     }
 
     return {
-      columns: columns as string[],
-      unique: resolveBoolean(unique, false, `${context}.unique`),
+      columns: indexColumns,
+      unique: resolvedUnique,
+      gin: resolvedGin,
     }
   })
 }
@@ -613,6 +670,7 @@ function resolveIndexes(raw: unknown, className: string): PgIndexMetadata[] {
 /** Allowed logical SQL column types. */
 const COLUMN_TYPES: ReadonlySet<string> = new Set<PgColumnType>([
   'BIGINT',
+  'INT',
   'DOUBLE',
   'BOOLEAN',
   'JSON_OBJECT',
@@ -639,6 +697,108 @@ function resolveColumnType(value: PgColumnType | undefined, context: string): Pg
     throw new Error(message)
   }
   return value
+}
+
+// === Default value resolution =============================================
+
+/**
+ * Fallback default applied when a column declares no `default` option.
+ *
+ * Numeric types fall back to `0`, `BOOLEAN` to `false`, `TEXT` to the empty
+ * string, and the JSON / date types to `null`. The mapping is exhaustive over
+ * `PgColumnType`, so adding a type without a fallback is a compile error.
+ */
+const COLUMN_DEFAULT_ZERO: Record<PgColumnType, unknown> = {
+  BIGINT: 0,
+  INT: 0,
+  DOUBLE: 0,
+  BOOLEAN: false,
+  TEXT: '',
+  JSON_OBJECT: null,
+  JSON_ARRAY: null,
+  DATE: null,
+}
+
+/**
+ * Resolve the raw `default` string of a column into its logical value.
+ *
+ * `undefined` falls back to {@link COLUMN_DEFAULT_ZERO}. A declared value is
+ * converted according to the column's logical type: `number` for the numeric
+ * types, `boolean` for `BOOLEAN`, and the parsed JSON value for the JSON types,
+ * while `TEXT` keeps the string as-is. `DATE` is fixed to `null` — its value is
+ * assigned at insert time, so a declared default is ignored. A value that cannot
+ * be converted is rejected (logged + thrown) rather than silently coerced.
+ */
+function resolveColumnDefault(
+  raw: string | undefined,
+  columnType: PgColumnType,
+  context: string,
+): unknown {
+  if (raw === undefined) return COLUMN_DEFAULT_ZERO[columnType]
+
+  switch (columnType) {
+    case 'BIGINT':
+    case 'INT':
+    case 'DOUBLE':
+      return parseNumberDefault(raw, context)
+    case 'BOOLEAN':
+      return parseBooleanDefault(raw, context)
+    case 'JSON_ARRAY':
+      return parseJsonDefault(raw, context, true)
+    case 'JSON_OBJECT':
+      return parseJsonDefault(raw, context, false)
+    case 'DATE':
+      // DATE defaults are fixed to null; the value is assigned at insert time.
+      return null
+    case 'TEXT':
+      return raw
+  }
+}
+
+/** Parse a numeric column default; throws when it is not a finite number. */
+function parseNumberDefault(raw: string, context: string): number {
+  const value = Number(raw)
+  if (!Number.isFinite(value)) {
+    const message = `Invalid default "${raw}" for ${context}: expected a numeric value.`
+    logger.error(message)
+    throw new Error(message)
+  }
+  return value
+}
+
+/** Parse a boolean column default; only `"true"` / `"false"` are accepted. */
+function parseBooleanDefault(raw: string, context: string): boolean {
+  const value = raw.trim()
+  if (value === 'true') return true
+  if (value === 'false') return false
+  const message = `Invalid default "${raw}" for ${context}: expected "true" or "false".`
+  logger.error(message)
+  throw new Error(message)
+}
+
+/**
+ * Parse a JSON column default; `expectArray` selects a JSON array
+ * (`JSON_ARRAY`) versus a JSON object (`JSON_OBJECT`).
+ */
+function parseJsonDefault(raw: string, context: string, expectArray: boolean): unknown {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    const message = `Invalid default "${raw}" for ${context}: expected valid JSON.`
+    logger.error(message)
+    throw new Error(message)
+  }
+
+  const valid = expectArray
+    ? Array.isArray(parsed)
+    : parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
+  if (!valid) {
+    const message = `Invalid default "${raw}" for ${context}: expected a JSON ${expectArray ? 'array' : 'object'}.`
+    logger.error(message)
+    throw new Error(message)
+  }
+  return parsed
 }
 
 /**

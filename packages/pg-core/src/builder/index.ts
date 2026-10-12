@@ -15,6 +15,7 @@ export {
   parsePgColumn,
   parsePgEntity,
   parsePgEntities,
+  assertValidPgName,
 } from './parser'
 export type {
   ParseProgramOptions,

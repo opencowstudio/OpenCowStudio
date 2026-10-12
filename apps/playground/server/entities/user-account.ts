@@ -23,12 +23,6 @@ export class UserAccount {
   @PgColumn({ columnType: 'DATE' })
   createdAt!: Date
 
-  @PgColumn({ columnType: 'BIGINT' })
-  createdAtTs!: number
-
   @PgColumn({ columnType: 'DATE' })
   updatedAt!: Date
-
-  @PgColumn({ columnType: 'BIGINT' })
-  updatedAtTs!: number
 }

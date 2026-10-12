@@ -21,6 +21,7 @@
 /** Logical SQL column types. */
 export type PgColumnType =
   | 'BIGINT'
+  | 'INT'
   | 'DOUBLE'
   | 'BOOLEAN'
   | 'JSON_OBJECT'
@@ -28,14 +29,28 @@ export type PgColumnType =
   | 'TEXT'
   | 'DATE'
 
+/**
+ * Normalised default value of a column, resolved by the builder from
+ * `PgColumnOptions.default`.
+ *
+ * A declared value is converted to the column's logical type — `number` for
+ * the numeric types, `boolean` for `BOOLEAN`, the parsed JSON value for the
+ * JSON types — while `TEXT` keeps the string. `DATE` is fixed to `null`, and the
+ * JSON types fall back to `null` when the option is omitted; otherwise the
+ * column falls back to its type's zero value (`0` / `false` / `''`).
+ */
+export type PgColumnDefault = unknown
+
 // === Entity metadata =======================================================
 
 /** Metadata stored for each index declared via `PgEntityOptions.indexes`. */
 export interface PgIndexMetadata {
-  /** list of column names that form the index */
+  /** list of column names that form the index (resolved snake_case names) */
   columns: string[]
   /** whether the index is unique */
   unique: boolean
+  /** whether the index uses the GIN access method */
+  gin: boolean
 }
 
 /** Metadata stored on a class by @PgEntity */
@@ -68,6 +83,8 @@ export interface PgColumnMetadata {
   column: string
   comment: string
   columnType: PgColumnType
+  /** normalised default value, resolved from PgColumnOptions.default */
+  default: PgColumnDefault
 }
 
 // === Configuration metadata =================================================

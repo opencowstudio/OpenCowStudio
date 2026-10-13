@@ -14,7 +14,13 @@
 // `PgDataSource.queryRead(text, params)`.
 // ---------------------------------------------------------------------------
 
-import type { PgColumnDefault, PgColumnType, PgEntityMetadata, PgIndexMetadata } from '../shared/types.ts'
+import type {
+  PgColumnDefault,
+  PgColumnMetadata,
+  PgColumnType,
+  PgEntityMetadata,
+  PgIndexMetadata,
+} from '../shared/types.ts'
 
 /**
  * Default schema assumed when an entity does not declare one.
@@ -227,6 +233,41 @@ export class PgSqlTemplate {
   }
 
   /**
+   * Build the `ALTER TABLE … ADD COLUMN` script for a single column.
+   *
+   * The column is added with `IF NOT EXISTS`, so the statement is idempotent —
+   * safe to run on every boot against a table that may already carry the column.
+   * Its definition mirrors the one emitted by
+   * {@link PgSqlTemplate.createTable}: the type comes from
+   * {@link COLUMN_TYPE_SQL}, and the `DEFAULT` clause is built by
+   * `columnDefaultClause` (`null` and `Date` defaults are omitted). Identifiers
+   * cannot be bind parameters, so the schema, table and column names are quoted
+   * with `quoteIdentifier`.
+   *
+   * When the column declares a comment, the matching `COMMENT ON COLUMN`
+   * statement is appended, so the returned string is a complete, runnable script
+   * (statements separated by `;`).
+   *
+   * @param schema Schema the table lives in.
+   * @param table Table the column is added to.
+   * @param column The resolved column metadata to build the statement from.
+   */
+  static addColumn(schema: string, table: string, column: PgColumnMetadata): string {
+    const tableRef = qualifyTable(schema, table)
+    const columnRef = `${tableRef}.${quoteIdentifier(column.column)}`
+
+    const statements = [
+      `ALTER TABLE ${tableRef} ADD COLUMN IF NOT EXISTS ${quoteIdentifier(column.column)} ${COLUMN_TYPE_SQL[column.columnType]}${columnDefaultClause(column.default)}`,
+    ]
+
+    if (column.comment) {
+      statements.push(`COMMENT ON COLUMN ${columnRef} IS ${quoteLiteral(column.comment)}`)
+    }
+
+    return statements.join(';\n')
+  }
+
+  /**
    * Create the table that records every executed SQL script.
    *
    * Parameters: none.
@@ -282,14 +323,12 @@ INSERT INTO public.sql_execution_script (
    *
    * Parameters: `$1` = schema, `$2` = table.
    *
-   * Both `data_type` (e.g. `double precision`, `timestamp with time zone`)
-   * and `udt_name` (the underlying type, e.g. `float8`) are returned, so a
-   * caller can map a logical `PgColumnType` to the exact catalog shape.
+   * `udt_name` (the underlying type, e.g. `float8`) is returned, so a caller
+   * can map a logical `PgColumnType` to the exact catalog shape.
    */
   static readonly COLUMN_DEFINITIONS = `
 SELECT
   column_name,
-  data_type,
   udt_name,
   column_default
 FROM information_schema.columns

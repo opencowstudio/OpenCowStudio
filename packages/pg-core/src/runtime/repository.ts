@@ -46,18 +46,41 @@ export interface PgEntityRepository<T, K = string | number> {
 /**
  * One column of a table as reported by the PostgreSQL catalog.
  *
- * Mirrors the columns selected by `PgSqlTemplate.COLUMN_DEFINITIONS`, so the
- * property names match the catalog's snake_case column aliases.
+ * Mirrors the columns selected by `PgSqlTemplate.COLUMN_DEFINITIONS`. The
+ * catalog returns snake_case column aliases; they are converted to camelCase
+ * before the row is typed (see `snakeToCamel`), so the property names follow
+ * the JavaScript convention.
  */
 export interface PgColumnDefinition {
   /** column name */
-  column_name: string
-  /** full SQL type, e.g. `double precision`, `timestamp with time zone` */
-  data_type: string
+  columnName: string
   /** underlying type name, e.g. `float8`, `timestamptz` */
-  udt_name: string
+  udtName: string
   /** column default expression, or `null` when the column has none */
-  column_default: string | null
+  columnDefault: string | null
+}
+
+/**
+ * Convert a snake_case name to camelCase: `column_default` → `columnDefault`.
+ *
+ * Only an underscore followed by a lowercase letter or a digit is transformed;
+ * any other character is left as-is, so an already camelCase name passes
+ * through unchanged.
+ */
+function snakeToCamel(name: string): string {
+  return name.replace(/_([a-z0-9])/g, (_, char: string) => char.toUpperCase())
+}
+
+/**
+ * Rebuild a catalog row with every key converted to camelCase.
+ *
+ * The values are carried over untouched. `T` is the shape the caller expects
+ * the converted row to have; it is not validated at runtime.
+ */
+function camelizeKeys<T>(row: Record<string, unknown>): T {
+  return Object.fromEntries(
+    Object.entries(row).map(([key, value]) => [snakeToCamel(key), value]),
+  ) as T
 }
 
 // ---------------------------------------------------------------------------
@@ -113,15 +136,20 @@ export class PgRepositoryManager {
    * Returns one row per column in declaration order (the catalog is ordered by
    * `ordinal_position`), or an empty array when the table does not exist yet.
    *
+   * The catalog returns snake_case column aliases; every row is run through
+   * `snakeToCamel` so the result matches {@link PgColumnDefinition}'s camelCase
+   * property names.
+   *
    * @param entity The entity metadata whose table is introspected.
    */
   async getColumnDefinitions(entity: PgEntityMetadata): Promise<PgColumnDefinition[]> {
     const result = (await this.dataSources
       .get(entity.dbName)
       .query(PgSqlTemplate.COLUMN_DEFINITIONS, [entity.schema, entity.table])) as {
-      rows: PgColumnDefinition[]
+      rows: Record<string, unknown>[]
     }
-    return result.rows
+
+    return result.rows.map(row => camelizeKeys<PgColumnDefinition>(row))
   }
 
   /**

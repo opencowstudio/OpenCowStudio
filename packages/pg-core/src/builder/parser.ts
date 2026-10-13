@@ -256,7 +256,7 @@ export function parsePgEntity(
   // --- entity-level identifiers & defaults ---
   const dbName = options.dbName?.trim() ? options.dbName : 'default'
   const schema = options.schema?.trim() ? options.schema : 'public'
-  const table = options.table?.trim() ? options.table : toSnakeCase(className)
+  const table = options.table?.trim() ? options.table : camelToSnake(className)
 
   assertValidPgName(dbName, 'dbName', `entity ${className}`)
   assertValidPgName(schema, 'schema', `entity ${className}`)
@@ -281,7 +281,7 @@ export function parsePgEntity(
   const columnMetadata = columns.map((c) => {
     const propertyKey = c.propertyKey
     const context = `column ${propertyKey} on ${className}`
-    const column = c.options.column?.trim() ? c.options.column : toSnakeCase(propertyKey)
+    const column = c.options.column?.trim() ? c.options.column : camelToSnake(propertyKey)
     assertValidPgName(column, 'column', context)
     const columnType = resolveColumnType(c.options.columnType, context)
     return {
@@ -545,8 +545,8 @@ function positionText(node: ts.Node, sourceFile: ts.SourceFile): string {
 /** Database column name used for every entity's primary key. */
 const KEY_COLUMN = 'id'
 
-/** Convert a string (typically a field name) to snake_case. */
-function toSnakeCase(name: string): string {
+/** Convert a camelCase name (typically a field name) to snake_case. */
+function camelToSnake(name: string): string {
   return name
     .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
     .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
@@ -590,7 +590,7 @@ export function assertValidPgName(name: string, kind: string, context: string): 
  * Returns an empty array when the option is omitted. Each entry must be an
  * object literal carrying a non-empty `columns` array of strings; `unique` and
  * `gin` default to `false`. Every declared name is normalised with
- * `toSnakeCase` into its column form, then checked against the entity: it must
+ * `camelToSnake` into its column form, then checked against the entity: it must
  * resolve to the key column or to one of the declared columns (`keyMetadata` /
  * `columnMetadata`), otherwise the entry is rejected (logged + thrown) rather
  * than silently ignored. Because a unique B-tree index and a GIN index are
@@ -642,7 +642,7 @@ function resolveIndexes(
     // Normalise each declared name to its column form and check it resolves to
     // the entity's key or one of its columns.
     const indexColumns = (columns as string[]).map((declared) => {
-      const column = toSnakeCase(declared)
+      const column = camelToSnake(declared)
       if (!knownColumns.has(column)) {
         const message = `Invalid ${context}: column "${declared}" is not a key or column of entity ${className}.`
         logger.error(message)

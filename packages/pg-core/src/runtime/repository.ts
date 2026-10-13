@@ -202,9 +202,9 @@ export class PgRepositoryManager {
 
     for (const [dbName, schemas] of schemasByDatabase) {
       const names = [...schemas]
-      const script = names
-        .map(schema => PgSqlTemplate.createSchema(schema))
-        .join(';\n')
+      // Each template already ends with `;`, so the script only needs the
+      // statements joined with a newline.
+      const script = names.map(schema => PgSqlTemplate.createSchema(schema)).join('\n')
       logger.info(`Database "${dbName}": ensuring schemas [${names.join(', ')}] ...`)
       await this.dataSources.get(dbName).query(script)
       logger.success(`Database "${dbName}": schemas ready [${names.join(', ')}]`)

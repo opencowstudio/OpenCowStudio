@@ -12,6 +12,10 @@
 // parameter order of each template is documented next to it, and a template is
 // meant to be passed straight to `PgDataSource.query(text, params)` /
 // `PgDataSource.queryRead(text, params)`.
+//
+// Every statement produced here is written out with its own trailing semicolon,
+// so a multi-statement script is built by joining the statements with a newline
+// (`\n`) — the terminator stays part of each statement.
 // ---------------------------------------------------------------------------
 
 import type {
@@ -65,22 +69,33 @@ function quoteLiteral(value: string): string {
 }
 
 /**
- * Build the `DEFAULT <literal>` clause for a column's normalised default.
+ * Build the SQL literal expression of a column's normalised default.
  *
  * Returns an empty string when the default is `null` (or `undefined`) or a
- * `Date`, so the clause is omitted and PostgreSQL applies its own implicit
- * default. The value is categorised by its JavaScript type, which the builder
- * already derived from the column type: numbers and booleans are inlined
- * unquoted (`true` / `false`), `TEXT` strings are quoted, and the JSON shapes
- * (an object / array) are quoted as JSON text.
+ * `Date`, so the caller omits the clause and PostgreSQL applies its own
+ * implicit default. The value is categorised by its JavaScript type, which the
+ * builder already derived from the column type: numbers and booleans are
+ * inlined unquoted (`true` / `false`), `TEXT` strings are quoted, and the JSON
+ * shapes (an object / array) are quoted as JSON text.
  */
-function columnDefaultClause(value: PgColumnDefault): string {
+function columnDefaultExpression(value: PgColumnDefault): string {
   if (value === null || value === undefined) return ''
   if (value instanceof Date) return ''
-  if (typeof value === 'number') return ` DEFAULT ${value}`
-  if (typeof value === 'boolean') return ` DEFAULT ${value}`
-  if (typeof value === 'string') return ` DEFAULT ${quoteLiteral(value)}`
-  return ` DEFAULT ${quoteLiteral(JSON.stringify(value))}`
+  if (typeof value === 'number') return `${value}`
+  if (typeof value === 'boolean') return `${value}`
+  if (typeof value === 'string') return quoteLiteral(value)
+  return quoteLiteral(JSON.stringify(value))
+}
+
+/**
+ * Build the `DEFAULT <literal>` clause for a column's normalised default.
+ *
+ * An empty string is produced when {@link columnDefaultExpression} has no
+ * expression to emit, so the clause is omitted.
+ */
+function columnDefaultClause(value: PgColumnDefault): string {
+  const expression = columnDefaultExpression(value)
+  return expression ? ` DEFAULT ${expression}` : ''
 }
 
 /** Build a schema-qualified, quoted table reference: `"schema"."table"`. */
@@ -136,7 +151,7 @@ export class PgSqlTemplate {
    * EXISTS` makes the statement idempotent, so it is safe to run on every
    * boot.
    */
-  static readonly CREATE_EXTENSION_PG_TRGM = 'CREATE EXTENSION IF NOT EXISTS "pg_trgm"'
+  static readonly CREATE_EXTENSION_PG_TRGM = 'CREATE EXTENSION IF NOT EXISTS "pg_trgm";'
 
   /**
    * Build the statement that creates a schema when it is missing.
@@ -149,7 +164,7 @@ export class PgSqlTemplate {
    * @param schema Schema to create; defaults to {@link DEFAULT_SCHEMA}.
    */
   static createSchema(schema: string = PgSqlTemplate.DEFAULT_SCHEMA): string {
-    return `CREATE SCHEMA IF NOT EXISTS ${quoteIdentifier(schema)}`
+    return `CREATE SCHEMA IF NOT EXISTS ${quoteIdentifier(schema)};`
   }
 
   /**
@@ -166,8 +181,8 @@ export class PgSqlTemplate {
    * When the entity — or any of its columns — declares a comment, the matching
    * `COMMENT ON TABLE` / `COMMENT ON COLUMN` statements are appended, and every
    * declared index is emitted through {@link PgSqlTemplate.createIndex}, so the
-   * returned string is a complete, runnable script (statements separated by
-   * `;`).
+   * returned string is a complete, runnable script: each statement is
+   * terminated with `;` and the statements are joined with a newline.
    *
    * @param metadata The resolved entity metadata to build the script from.
    */
@@ -183,21 +198,21 @@ export class PgSqlTemplate {
     ]
 
     const statements = [
-      `CREATE TABLE IF NOT EXISTS ${tableRef} (\n${columnDefinitions.map(definition => `  ${definition}`).join(',\n')}\n)`,
+      `CREATE TABLE IF NOT EXISTS ${tableRef} (\n${columnDefinitions.map(definition => `  ${definition}`).join(',\n')}\n);`,
     ]
 
     if (metadata.comment) {
-      statements.push(`COMMENT ON TABLE ${tableRef} IS ${quoteLiteral(metadata.comment)}`)
+      statements.push(`COMMENT ON TABLE ${tableRef} IS ${quoteLiteral(metadata.comment)};`)
     }
     if (metadata.key.comment) {
       statements.push(
-        `COMMENT ON COLUMN ${tableRef}.${quoteIdentifier(metadata.key.column)} IS ${quoteLiteral(metadata.key.comment)}`,
+        `COMMENT ON COLUMN ${tableRef}.${quoteIdentifier(metadata.key.column)} IS ${quoteLiteral(metadata.key.comment)};`,
       )
     }
     for (const column of metadata.columns) {
       if (column.comment) {
         statements.push(
-          `COMMENT ON COLUMN ${tableRef}.${quoteIdentifier(column.column)} IS ${quoteLiteral(column.comment)}`,
+          `COMMENT ON COLUMN ${tableRef}.${quoteIdentifier(column.column)} IS ${quoteLiteral(column.comment)};`,
         )
       }
     }
@@ -205,7 +220,7 @@ export class PgSqlTemplate {
       statements.push(PgSqlTemplate.createIndex(metadata.schema, metadata.table, index))
     }
 
-    return statements.join(';\n')
+    return statements.join('\n')
   }
 
   /**
@@ -229,7 +244,7 @@ export class PgSqlTemplate {
       : index.columns.map(quoteIdentifier).join(', ')
     const unique = index.unique ? 'UNIQUE ' : ''
     const using = index.gin ? ' USING gin' : ''
-    return `CREATE ${unique}INDEX IF NOT EXISTS ${quoteIdentifier(indexName(table, index))} ON ${tableRef}${using} (${columns})`
+    return `CREATE ${unique}INDEX IF NOT EXISTS ${quoteIdentifier(indexName(table, index))} ON ${tableRef}${using} (${columns});`
   }
 
   /**
@@ -245,8 +260,9 @@ export class PgSqlTemplate {
    * with `quoteIdentifier`.
    *
    * When the column declares a comment, the matching `COMMENT ON COLUMN`
-   * statement is appended, so the returned string is a complete, runnable script
-   * (statements separated by `;`).
+   * statement is appended, so the returned string is a complete, runnable
+   * script: each statement is terminated with `;` and the statements are joined
+   * with a newline.
    *
    * @param schema Schema the table lives in.
    * @param table Table the column is added to.
@@ -257,14 +273,64 @@ export class PgSqlTemplate {
     const columnRef = `${tableRef}.${quoteIdentifier(column.column)}`
 
     const statements = [
-      `ALTER TABLE ${tableRef} ADD COLUMN IF NOT EXISTS ${quoteIdentifier(column.column)} ${COLUMN_TYPE_SQL[column.columnType]}${columnDefaultClause(column.default)}`,
+      `ALTER TABLE ${tableRef} ADD COLUMN IF NOT EXISTS ${quoteIdentifier(column.column)} ${COLUMN_TYPE_SQL[column.columnType]}${columnDefaultClause(column.default)};`,
     ]
 
     if (column.comment) {
-      statements.push(`COMMENT ON COLUMN ${columnRef} IS ${quoteLiteral(column.comment)}`)
+      statements.push(`COMMENT ON COLUMN ${columnRef} IS ${quoteLiteral(column.comment)};`)
     }
 
-    return statements.join(';\n')
+    return statements.join('\n')
+  }
+
+  /**
+   * Build the statement that changes the type of an existing column.
+   *
+   * The target type comes from {@link COLUMN_TYPE_SQL}, so it is the same
+   * catalog shape emitted by {@link PgSqlTemplate.createTable} and
+   * {@link PgSqlTemplate.addColumn}. No `USING` clause is emitted, so the
+   * statement succeeds only when PostgreSQL knows an implicit or assignment
+   * cast between the current and the target type; a conversion that needs an
+   * explicit cast must be run by the caller with its own `USING` expression.
+   * Note that PostgreSQL rewrites the whole table for conversions that are not
+   * binary-coercible, so the statement is not free to re-run.
+   *
+   * Identifiers cannot be bind parameters, so the schema, table and column
+   * names are quoted with `quoteIdentifier`.
+   *
+   * @param schema Schema the table lives in.
+   * @param table Table carrying the column.
+   * @param column The resolved column metadata to build the statement from.
+   */
+  static alterColumnType(schema: string, table: string, column: PgColumnMetadata): string {
+    const tableRef = qualifyTable(schema, table)
+    return `ALTER TABLE ${tableRef} ALTER COLUMN ${quoteIdentifier(column.column)} TYPE ${COLUMN_TYPE_SQL[column.columnType]};`
+  }
+
+  /**
+   * Build the statement that sets or drops the default of an existing column.
+   *
+   * The default expression is built by `columnDefaultExpression`, so it is the
+   * same literal emitted by {@link PgSqlTemplate.createTable} and
+   * {@link PgSqlTemplate.addColumn}: `null` / `undefined` / `Date` defaults
+   * carry no expression, and the column is reset with
+   * `ALTER COLUMN … DROP DEFAULT`; any other value is applied with
+   * `ALTER COLUMN … SET DEFAULT <literal>`. Either form is idempotent — the
+   * statement can be re-run on every boot without side effects.
+   *
+   * Identifiers cannot be bind parameters, so the schema, table and column
+   * names are quoted with `quoteIdentifier`.
+   *
+   * @param schema Schema the table lives in.
+   * @param table Table carrying the column.
+   * @param column The resolved column metadata to build the statement from.
+   */
+  static alterColumnDefault(schema: string, table: string, column: PgColumnMetadata): string {
+    const tableRef = qualifyTable(schema, table)
+    const expression = columnDefaultExpression(column.default)
+    return expression
+      ? `ALTER TABLE ${tableRef} ALTER COLUMN ${quoteIdentifier(column.column)} SET DEFAULT ${expression};`
+      : `ALTER TABLE ${tableRef} ALTER COLUMN ${quoteIdentifier(column.column)} DROP DEFAULT;`
   }
 
   /**
@@ -282,7 +348,7 @@ CREATE TABLE IF NOT EXISTS public.sql_execution_script (
   script_content TEXT NOT NULL,
   created_at     TEXT NOT NULL,
   created_at_ts  BIGINT NOT NULL
-)
+);
 `.trim()
 
   /**
@@ -298,14 +364,15 @@ INSERT INTO public.sql_execution_script (
   script_content,
   created_at,
   created_at_ts
-) VALUES ($1, $2, $3, $4, $5)
+) VALUES ($1, $2, $3, $4, $5);
 `.trim()
 
   /**
    * Initialization script run once per database at startup.
    *
    * Merges {@link CREATE_EXTENSION_PG_TRGM} and
-   * {@link CREATE_SQL_EXECUTION_SCRIPT_TABLE} into a single statement string.
+   * {@link CREATE_SQL_EXECUTION_SCRIPT_TABLE} into a single script: each
+   * statement already ends with `;`, so they are simply joined with a newline.
    * Because it takes no parameters, `pg` sends it over the simple query
    * protocol, so the whole script runs in one connection and one round trip.
    * PostgreSQL executes a multi-statement simple query inside a single
@@ -316,7 +383,7 @@ INSERT INTO public.sql_execution_script (
   static readonly INITIALIZATION_SCRIPT = [
     PgSqlTemplate.CREATE_EXTENSION_PG_TRGM,
     PgSqlTemplate.CREATE_SQL_EXECUTION_SCRIPT_TABLE,
-  ].join(';\n')
+  ].join('\n')
 
   /**
    * Column definitions of a table: one row per column, in declaration order.
@@ -334,7 +401,7 @@ SELECT
 FROM information_schema.columns
 WHERE table_schema = $1
   AND table_name = $2
-ORDER BY ordinal_position
+ORDER BY ordinal_position;
 `.trim()
 
   /**
@@ -352,6 +419,6 @@ SELECT
 FROM pg_indexes
 WHERE schemaname = $1
   AND tablename = $2
-ORDER BY indexname
+ORDER BY indexname;
 `.trim()
 }

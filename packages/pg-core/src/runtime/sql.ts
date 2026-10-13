@@ -346,8 +346,7 @@ CREATE TABLE IF NOT EXISTS public.sql_execution_script (
   id             TEXT PRIMARY KEY,
   table_name     TEXT NOT NULL,
   script_content TEXT NOT NULL,
-  created_at     TEXT NOT NULL,
-  created_at_ts  BIGINT NOT NULL
+  created_at     TIMESTAMPTZ NOT NULL
 );
 `.trim()
 
@@ -355,16 +354,15 @@ CREATE TABLE IF NOT EXISTS public.sql_execution_script (
    * Record one executed SQL script in `sql_execution_script`.
    *
    * Parameters: `$1` = id, `$2` = table_name, `$3` = script_content,
-   * `$4` = created_at, `$5` = created_at_ts.
+   * `$4` = created_at.
    */
   static readonly INSERT_SQL_EXECUTION_SCRIPT = `
 INSERT INTO public.sql_execution_script (
   id,
   table_name,
   script_content,
-  created_at,
-  created_at_ts
-) VALUES ($1, $2, $3, $4, $5);
+  created_at
+) VALUES ($1, $2, $3, $4);
 `.trim()
 
   /**

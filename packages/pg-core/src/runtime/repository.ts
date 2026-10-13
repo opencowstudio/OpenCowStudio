@@ -16,9 +16,9 @@
 // ---------------------------------------------------------------------------
 
 import { consola } from 'consola'
-import { PgSqlTemplate } from './sql'
+import { PgSqlTemplate, columnDefaultExpression } from './sql'
 import type { PgDataSourceManager } from './datasource'
-import type { PgEntityMetadata } from '../shared/types.ts'
+import type { PgColumnMetadata, PgColumnType, PgEntityMetadata } from '../shared/types.ts'
 
 // Tagged logger so the core stays framework-agnostic (no Nuxt dep).
 const logger = consola.withTag('pg-repository')
@@ -58,6 +58,84 @@ export interface PgColumnDefinition {
   udtName: string
   /** column default expression, or `null` when the column has none */
   columnDefault: string | null
+}
+
+/**
+ * Which aspect of a declared column diverges from its catalog definition.
+ *
+ *  * `missing` — the column is declared by the entity but absent from the table;
+ *  * `type`    — the column exists but its catalog `udt_name` is not the one its
+ *                logical `PgColumnType` maps to;
+ *  * `default` — the column exists but its catalog default differs from the one
+ *                the entity declares.
+ */
+export type PgColumnMismatchKind = 'missing' | 'type' | 'default'
+
+/**
+ * One divergence between a declared column and its catalog definition.
+ *
+ * `expected` is the value the entity metadata declares and `actual` the value
+ * the catalog reports; both are rendered as strings so they can be compared and
+ * logged directly. For a `missing` column there is no catalog row, so both are
+ * `null`. On the `default` kind, `null` on either side means "no default" (the
+ * column has no `DEFAULT` clause).
+ */
+export interface PgColumnMismatch {
+  /** the declared column name the two sides are matched on */
+  column: string
+  /** the declared column metadata the divergence originates from */
+  columnMetadata: PgColumnMetadata
+  /** the aspect that diverges */
+  kind: PgColumnMismatchKind
+  /** value declared by the entity metadata, or `null` when not applicable */
+  expected: string | null
+  /** value reported by the catalog, or `null` when not applicable */
+  actual: string | null
+}
+
+/**
+ * PostgreSQL catalog type (`udt_name`) each logical `PgColumnType` is stored as.
+ *
+ * Mirrors the column types emitted by {@link PgSqlTemplate.createTable}: an
+ * `INTEGER` column reports `int4`, a `DOUBLE PRECISION` one `float8`, a `JSONB`
+ * one `jsonb` (for both JSON types) and a `TIMESTAMPTZ` one `timestamptz`.
+ */
+const COLUMN_TYPE_UDT_NAME: Record<PgColumnType, string> = {
+  BIGINT: 'int8',
+  INT: 'int4',
+  DOUBLE: 'float8',
+  BOOLEAN: 'bool',
+  JSON_OBJECT: 'jsonb',
+  JSON_ARRAY: 'jsonb',
+  TEXT: 'text',
+  DATE: 'timestamptz',
+}
+
+/**
+ * Reduce a catalog `column_default` to a value comparable with the declared one.
+ *
+ * PostgreSQL renders a column default as its expression followed by an explicit
+ * cast, e.g. `'{}'::jsonb` or `'hello'::text`; only the part before the first
+ * `::` is kept. A `null` default (the column has no `DEFAULT`) passes through.
+ */
+function bareColumnDefault(columnDefault: string | null): string | null {
+  if (columnDefault === null) return null
+  const cast = columnDefault.indexOf('::')
+  return cast === -1 ? columnDefault : columnDefault.slice(0, cast)
+}
+
+/**
+ * Render a declared column default as the literal PostgreSQL stores.
+ *
+ * The literal itself is built by {@link columnDefaultExpression}, the same
+ * renderer the runtime uses to write the column's `DEFAULT` clause, so the two
+ * agree by construction (a `JSON_OBJECT` default of `{}` renders as `'{}'`, the
+ * shape the catalog reports). Only the empty result is normalised here: it means
+ * the column declares no default (`null` / `undefined` / `Date`) and becomes
+ * `null` to match the catalog's `null`.
+ */
+function declaredColumnDefault(column: PgColumnMetadata): string | null {
+  return columnDefaultExpression(column.default) || null
 }
 
 /**
@@ -153,13 +231,141 @@ export class PgRepositoryManager {
   }
 
   /**
-   * Ensure the table backing an entity exists.
+   * Compare an entity's declared columns with a table's catalog definition.
+   *
+   * Every column of `entity.columns` is matched against `definitions` by name
+   * and reported when the two diverge:
+   *
+   *  * the column has no catalog definition at all (`missing`);
+   *  * its catalog `udt_name` is not the one its `PgColumnType` maps to
+   *    (`type`) — see {@link COLUMN_TYPE_UDT_NAME};
+   *  * its catalog default differs from the declared one (`default`): the
+   *    catalog cast is dropped and the declared default is rendered as the
+   *    literal that was written, so `'{}'::jsonb` compares equal to a
+   *    `JSON_OBJECT` default of `{}`, and a `null` on either side means "no
+   *    default".
+   *
+   * One column can yield both a `type` and a `default` mismatch, and the result
+   * may hold several entries in total. Every entry carries the declared
+   * `PgColumnMetadata` it was derived from (`columnMetadata`). The comparison is
+   * one-directional:
+   * catalog columns the entity does not declare as a `PgColumnMetadata` — the
+   * key column in particular — are ignored. The returned array is empty when
+   * every declared column is consistent.
+   *
+   * @param entity The entity metadata whose declared columns are checked.
+   * @param definitions The catalog definition to check them against, as returned
+   * by {@link PgRepositoryManager.getColumnDefinitions}.
+   */
+  getColumnMismatches(
+    entity: PgEntityMetadata,
+    definitions: PgColumnDefinition[],
+  ): PgColumnMismatch[] {
+    const byName = new Map(definitions.map(definition => [definition.columnName, definition]))
+    const mismatches: PgColumnMismatch[] = []
+
+    for (const column of entity.columns) {
+      const definition = byName.get(column.column)
+      if (!definition) {
+        mismatches.push({
+          column: column.column,
+          columnMetadata: column,
+          kind: 'missing',
+          expected: null,
+          actual: null,
+        })
+        continue
+      }
+
+      const expectedUdtName = COLUMN_TYPE_UDT_NAME[column.columnType]
+      if (definition.udtName !== expectedUdtName) {
+        mismatches.push({
+          column: column.column,
+          columnMetadata: column,
+          kind: 'type',
+          expected: expectedUdtName,
+          actual: definition.udtName,
+        })
+      }
+
+      const expectedDefault = declaredColumnDefault(column)
+      const actualDefault = bareColumnDefault(definition.columnDefault)
+      if (expectedDefault !== actualDefault) {
+        mismatches.push({
+          column: column.column,
+          columnMetadata: column,
+          kind: 'default',
+          expected: expectedDefault,
+          actual: actualDefault,
+        })
+      }
+    }
+
+    return mismatches
+  }
+
+  /**
+   * Bring an existing table's columns in line with the entity's declaration.
+   *
+   * The declared columns are compared with `definitions` first (see
+   * {@link PgRepositoryManager.getColumnMismatches}); when nothing diverges the
+   * method is a no-op. Otherwise every mismatch contributes one statement:
+   *
+   *  * `missing` — the column is added by {@link PgSqlTemplate.addColumn}, which
+   *    carries the declared type, default and comment;
+   *  * `type`    — the column type is changed by
+   *    {@link PgSqlTemplate.alterColumnType};
+   *  * `default` — the column default is set or dropped by
+   *    {@link PgSqlTemplate.alterColumnDefault}.
+   *
+   * The statements are joined into one script (each already ends with `;`) and
+   * sent as a single parameterless query, so they are applied over one
+   * connection in one round trip — and, being a simple query, inside one
+   * implicit transaction. The mismatches come back in declaration order, with a
+   * column's `type` statement preceding its `default` one, so a column that
+   * needs both is altered to its declared shape before the default is applied.
+   *
+   * @param entity The entity metadata whose columns are ensured.
+   * @param definitions The catalog definition to reconcile against, as returned
+   * by {@link PgRepositoryManager.getColumnDefinitions}.
+   */
+  async ensureColumns(entity: PgEntityMetadata, definitions: PgColumnDefinition[]): Promise<void> {
+    const label = `"${entity.schema}"."${entity.table}"`
+    const mismatches = this.getColumnMismatches(entity, definitions)
+    if (mismatches.length === 0) {
+      logger.success(`Database "${entity.dbName}": columns of ${label} are up to date`)
+      return
+    }
+
+    const statements = mismatches.map(mismatch => {
+      const column = mismatch.columnMetadata
+      switch (mismatch.kind) {
+        case 'missing':
+          return PgSqlTemplate.addColumn(entity.schema, entity.table, column)
+        case 'type':
+          return PgSqlTemplate.alterColumnType(entity.schema, entity.table, column)
+        case 'default':
+          return PgSqlTemplate.alterColumnDefault(entity.schema, entity.table, column)
+      }
+    })
+
+    logger.info(
+      `Database "${entity.dbName}": aligning ${statements.length} column(s) of ${label} ...`,
+    )
+    await this.dataSources.get(entity.dbName).query(statements.join('\n'))
+    logger.success(`Database "${entity.dbName}": columns of ${label} aligned`)
+  }
+
+  /**
+   * Ensure the table backing an entity exists and its columns match the entity.
    *
    * Introspects the entity's table first (see
    * {@link PgRepositoryManager.getColumnDefinitions}): when it already has
-   * columns, nothing is created. Otherwise the table is created from
-   * {@link PgSqlTemplate.createTable} — the statement is `CREATE TABLE IF NOT
-   * EXISTS`, so it stays safe if the table appears in between.
+   * columns, the table is left as-is and its columns are reconciled with the
+   * entity through {@link PgRepositoryManager.ensureColumns}. Otherwise the
+   * table is created from {@link PgSqlTemplate.createTable} — the statement is
+   * `CREATE TABLE IF NOT EXISTS`, so it stays safe if the table appears in
+   * between.
    *
    * @param entity The entity metadata whose table is ensured.
    */
@@ -170,6 +376,7 @@ export class PgRepositoryManager {
     const existing = await this.getColumnDefinitions(entity)
     if (existing.length > 0) {
       logger.success(`Database "${entity.dbName}": table ${label} already exists`)
+      await this.ensureColumns(entity, existing)
       return
     }
 

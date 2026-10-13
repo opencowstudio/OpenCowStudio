@@ -77,8 +77,12 @@ function quoteLiteral(value: string): string {
  * builder already derived from the column type: numbers and booleans are
  * inlined unquoted (`true` / `false`), `TEXT` strings are quoted, and the JSON
  * shapes (an object / array) are quoted as JSON text.
+ *
+ * Exported so the introspection layer can render a declared default exactly as
+ * it was written — the same literal PostgreSQL stores — instead of re-deriving
+ * it. {@link columnDefaultClause} wraps it for the `DEFAULT` clause.
  */
-function columnDefaultExpression(value: PgColumnDefault): string {
+export function columnDefaultExpression(value: PgColumnDefault): string {
   if (value === null || value === undefined) return ''
   if (value instanceof Date) return ''
   if (typeof value === 'number') return `${value}`
@@ -90,8 +94,10 @@ function columnDefaultExpression(value: PgColumnDefault): string {
 /**
  * Build the `DEFAULT <literal>` clause for a column's normalised default.
  *
- * An empty string is produced when {@link columnDefaultExpression} has no
- * expression to emit, so the clause is omitted.
+ * Wraps {@link columnDefaultExpression}: an empty expression (the default is
+ * `null` / `undefined` / `Date`) produces an empty clause, so `CREATE TABLE` /
+ * `ADD COLUMN` omit it and {@link PgSqlTemplate.alterColumnDefault} drops the
+ * default instead.
  */
 function columnDefaultClause(value: PgColumnDefault): string {
   const expression = columnDefaultExpression(value)

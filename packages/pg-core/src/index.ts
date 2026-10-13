@@ -43,8 +43,13 @@ export type {
 
 // === runtime ===============================================================
 
-// Entity operation contract (CRUD).
-export type { PgEntityRepository, PgColumnDefinition } from './runtime/repository'
+// Entity operation contract (CRUD) + column introspection types.
+export type {
+  PgEntityRepository,
+  PgColumnDefinition,
+  PgColumnMismatch,
+  PgColumnMismatchKind,
+} from './runtime/repository'
 
 // Repository registry (one repository per scanned entity).
 export { PgRepositoryManager } from './runtime/repository'

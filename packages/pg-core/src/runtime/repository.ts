@@ -16,6 +16,7 @@
 // ---------------------------------------------------------------------------
 
 import { consola } from 'consola'
+import { generateId } from '@opencowstudio/core'
 import { PgSqlTemplate, columnDefaultExpression, indexName } from './sql'
 import type { PgDataSourceManager } from './datasource'
 import type { PgColumnMetadata, PgColumnType, PgEntityMetadata } from '../shared/types.ts'
@@ -348,6 +349,38 @@ export class PgRepositoryManager {
   }
 
   /**
+   * Execute a SQL script against an entity's datasource, recording it first.
+   *
+   * Every table, column and index script goes through here — see
+   * {@link PgRepositoryManager.ensureTable},
+   * {@link PgRepositoryManager.ensureColumns} and
+   * {@link PgRepositoryManager.ensureIndex} — so the DDL applied at boot leaves
+   * an audit trail. The script is written to `sql_execution_script` through
+   * {@link PgSqlTemplate.INSERT_SQL_EXECUTION_SCRIPT} before it is run: one row
+   * per execution, keyed by a fresh `generateId` value, tagged with the entity's
+   * schema-qualified table (`<schema>.<table>`) and stamped with the current
+   * time. The order matters — the record is committed on its own query, so a
+   * script that fails is still on record.
+   *
+   * @param entity The entity metadata the script belongs to; its `dbName`
+   * resolves the datasource and its `schema` / `table` are recorded as
+   * `table_name`.
+   * @param script The complete script to record and execute; every statement
+   * already ends with `;`, so it is sent as one parameterless query.
+   */
+  async executeScript(entity: PgEntityMetadata, script: string): Promise<void> {
+    const dataSource = this.dataSources.get(entity.dbName)
+
+    await dataSource.query(PgSqlTemplate.INSERT_SQL_EXECUTION_SCRIPT, [
+      generateId(),
+      `${entity.schema}.${entity.table}`,
+      script,
+      new Date(),
+    ])
+    await dataSource.query(script)
+  }
+
+  /**
    * Bring an existing table's columns in line with the entity's declaration.
    *
    * The declared columns are compared with `definitions` first (see
@@ -362,11 +395,12 @@ export class PgRepositoryManager {
    *    {@link PgSqlTemplate.alterColumnDefault}.
    *
    * The statements are joined into one script (each already ends with `;`) and
-   * sent as a single parameterless query, so they are applied over one
-   * connection in one round trip — and, being a simple query, inside one
-   * implicit transaction. The mismatches come back in declaration order, with a
-   * column's `type` statement preceding its `default` one, so a column that
-   * needs both is altered to its declared shape before the default is applied.
+   * executed through {@link PgRepositoryManager.executeScript}, so the script is
+   * recorded before it runs and is applied over one connection in one round
+   * trip — and, being a simple query, inside one implicit transaction. The
+   * mismatches come back in declaration order, with a column's `type` statement
+   * preceding its `default` one, so a column that needs both is altered to its
+   * declared shape before the default is applied.
    *
    * @param entity The entity metadata whose columns are ensured.
    * @param definitions The catalog definition to reconcile against, as returned
@@ -395,7 +429,7 @@ export class PgRepositoryManager {
     logger.info(
       `Database "${entity.dbName}": aligning ${statements.length} column(s) of ${label} ...`,
     )
-    await this.dataSources.get(entity.dbName).query(statements.join('\n'))
+    await this.executeScript(entity, statements.join('\n'))
     logger.success(`Database "${entity.dbName}": columns of ${label} aligned`)
   }
 
@@ -413,9 +447,9 @@ export class PgRepositoryManager {
    * `gin` index a `USING gin` one using the `gin_trgm_ops` class.
    *
    * The statements are joined into one script (each already ends with `;`) and
-   * sent as a single parameterless query, so they are applied over one
-   * connection in one round trip. The method is a no-op when every declared
-   * index already exists.
+   * executed through {@link PgRepositoryManager.executeScript}, so the script is
+   * recorded before it runs and is applied over one connection in one round
+   * trip. The method is a no-op when every declared index already exists.
    *
    * @param entity The entity metadata whose indexes are ensured.
    */
@@ -438,7 +472,7 @@ export class PgRepositoryManager {
     logger.info(
       `Database "${entity.dbName}": creating ${statements.length} index(es) on ${label} ...`,
     )
-    await this.dataSources.get(entity.dbName).query(statements.join('\n'))
+    await this.executeScript(entity, statements.join('\n'))
     logger.success(`Database "${entity.dbName}": indexes of ${label} aligned`)
   }
 
@@ -450,7 +484,8 @@ export class PgRepositoryManager {
    * columns, the table is left as-is and its columns are reconciled with the
    * entity through {@link PgRepositoryManager.ensureColumns}, followed by its
    * indexes through {@link PgRepositoryManager.ensureIndex}. Otherwise the table
-   * is created from {@link PgSqlTemplate.createTable} — the statement is
+   * is created from {@link PgSqlTemplate.createTable}, recorded and executed
+   * through {@link PgRepositoryManager.executeScript} — the statement is
    * `CREATE TABLE IF NOT EXISTS`, so it stays safe if the table appears in
    * between.
    *
@@ -468,7 +503,7 @@ export class PgRepositoryManager {
       return
     }
 
-    await this.dataSources.get(entity.dbName).query(PgSqlTemplate.createTable(entity))
+    await this.executeScript(entity, PgSqlTemplate.createTable(entity))
     logger.success(`Database "${entity.dbName}": table ${label} created`)
   }
 

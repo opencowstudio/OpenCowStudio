@@ -11,20 +11,32 @@ import type {
 // `getColumnMismatches` is pure, so the datasource manager is never touched.
 const manager = new PgRepositoryManager({} as PgDataSourceManager)
 
+/** One query handed to the datasource: the statement plus its bind parameters. */
+interface RecordedQuery {
+  text: string
+  params?: unknown[]
+}
+
 /**
- * Build a manager whose datasource records every script handed to `query`.
- * `ensureColumns` is the only code path under test that touches the datasource.
+ * Build a manager whose datasource records every query handed to `query`.
+ * The code paths under test touch the datasource only through `executeScript`,
+ * which records the script before executing it.
  */
-function recordingManager(scripts: string[]): PgRepositoryManager {
+function recordingManager(queries: RecordedQuery[]): PgRepositoryManager {
   const dataSources = {
     get: () => ({
-      query: (text: string) => {
-        scripts.push(text)
+      query: (text: string, params?: unknown[]) => {
+        queries.push({ text, params })
         return Promise.resolve({ rows: [] })
       },
     }),
   } as unknown as PgDataSourceManager
   return new PgRepositoryManager(dataSources)
+}
+
+/** The statements of `queries`, in execution order. */
+function textsOf(queries: RecordedQuery[]): string[] {
+  return queries.map(query => query.text)
 }
 
 /** Build the minimal entity metadata carrying `columns`. */
@@ -143,34 +155,55 @@ describe('PgRepositoryManager.getColumnMismatches', () => {
 
 describe('PgRepositoryManager.ensureColumns', () => {
   it('sends nothing when every declared column is consistent', async () => {
-    const scripts: string[] = []
+    const queries: RecordedQuery[] = []
     const entity = entityWith([column({ column: 'name', columnType: 'TEXT', default: '' })])
     const definitions = [definition('name', 'text', "''::text")]
 
-    await recordingManager(scripts).ensureColumns(entity, definitions)
+    await recordingManager(queries).ensureColumns(entity, definitions)
 
-    expect(scripts).toEqual([])
+    expect(queries).toEqual([])
   })
 
-  it('adds a column that is missing from the table', async () => {
-    const scripts: string[] = []
+  it('records the script before executing it', async () => {
+    const queries: RecordedQuery[] = []
     const ghost = column({ column: 'ghost', columnType: 'INT', default: 0 })
     const entity = entityWith([ghost])
 
-    await recordingManager(scripts).ensureColumns(entity, [])
+    await recordingManager(queries).ensureColumns(entity, [])
 
-    expect(scripts).toEqual([PgSqlTemplate.addColumn('public', 'sample', ghost)])
+    const addColumn = PgSqlTemplate.addColumn('public', 'sample', ghost)
+    const [record, script] = queries
+
+    expect(record!.text).toBe(PgSqlTemplate.INSERT_SQL_EXECUTION_SCRIPT)
+    // `$1` = id, `$2` = table_name, `$3` = script_content, `$4` = created_at.
+    expect(record!.params![0]).toEqual(expect.any(String))
+    expect(record!.params!.slice(1)).toEqual(['public.sample', addColumn, expect.any(Date)])
+    expect(script!.text).toBe(addColumn)
+  })
+
+  it('adds a column that is missing from the table', async () => {
+    const queries: RecordedQuery[] = []
+    const ghost = column({ column: 'ghost', columnType: 'INT', default: 0 })
+    const entity = entityWith([ghost])
+
+    await recordingManager(queries).ensureColumns(entity, [])
+
+    expect(textsOf(queries)).toEqual([
+      PgSqlTemplate.INSERT_SQL_EXECUTION_SCRIPT,
+      PgSqlTemplate.addColumn('public', 'sample', ghost),
+    ])
   })
 
   it('aligns the type before the default of a diverging column', async () => {
-    const scripts: string[] = []
+    const queries: RecordedQuery[] = []
     const amount = column({ column: 'amount', columnType: 'DOUBLE', default: 1.5 })
     const entity = entityWith([amount])
     const definitions = [definition('amount', 'int4', '2')]
 
-    await recordingManager(scripts).ensureColumns(entity, definitions)
+    await recordingManager(queries).ensureColumns(entity, definitions)
 
-    expect(scripts).toEqual([
+    expect(textsOf(queries)).toEqual([
+      PgSqlTemplate.INSERT_SQL_EXECUTION_SCRIPT,
       [
         PgSqlTemplate.alterColumnType('public', 'sample', amount),
         PgSqlTemplate.alterColumnDefault('public', 'sample', amount),
@@ -181,19 +214,19 @@ describe('PgRepositoryManager.ensureColumns', () => {
 
 describe('PgRepositoryManager.ensureTable', () => {
   it('reconciles the columns of an existing table', async () => {
-    const scripts: string[] = []
+    const queries: RecordedQuery[] = []
     const ghost = column({ column: 'ghost', columnType: 'INT', default: 0 })
     const entity = entityWith([ghost])
     // The catalog reports the key column only, so `ghost` is missing.
     const dataSources = {
       get: () => ({
-        query: (text: string) => {
+        query: (text: string, params?: unknown[]) => {
           if (text.includes('information_schema.columns')) {
             return Promise.resolve({
               rows: [{ column_name: 'id', udt_name: 'int8', column_default: null }],
             })
           }
-          scripts.push(text)
+          queries.push({ text, params })
           return Promise.resolve({ rows: [] })
         },
       }),
@@ -201,6 +234,9 @@ describe('PgRepositoryManager.ensureTable', () => {
 
     await new PgRepositoryManager(dataSources).ensureTable(entity)
 
-    expect(scripts).toEqual([PgSqlTemplate.addColumn('public', 'sample', ghost)])
+    expect(textsOf(queries)).toEqual([
+      PgSqlTemplate.INSERT_SQL_EXECUTION_SCRIPT,
+      PgSqlTemplate.addColumn('public', 'sample', ghost),
+    ])
   })
 })

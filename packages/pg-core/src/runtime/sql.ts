@@ -127,7 +127,7 @@ const INDEX_NAME_BASE_MAX_LENGTH = 59
  * appended. Including the table keeps the name unique across the schema
  * (PostgreSQL requires index names to be unique per schema).
  */
-function indexName(table: string, index: PgIndexMetadata): string {
+export function indexName(table: string, index: PgIndexMetadata): string {
   const suffix = index.gin ? 'gin' : index.unique ? 'uq' : 'idx'
   const base = [table, ...index.columns].join('_')
   return `${base.slice(0, INDEX_NAME_BASE_MAX_LENGTH)}_${suffix}`

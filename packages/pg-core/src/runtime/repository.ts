@@ -16,7 +16,7 @@
 // ---------------------------------------------------------------------------
 
 import { consola } from 'consola'
-import { PgSqlTemplate, columnDefaultExpression } from './sql'
+import { PgSqlTemplate, columnDefaultExpression, indexName } from './sql'
 import type { PgDataSourceManager } from './datasource'
 import type { PgColumnMetadata, PgColumnType, PgEntityMetadata } from '../shared/types.ts'
 
@@ -58,6 +58,21 @@ export interface PgColumnDefinition {
   udtName: string
   /** column default expression, or `null` when the column has none */
   columnDefault: string | null
+}
+
+/**
+ * One index of a table as reported by the PostgreSQL catalog.
+ *
+ * Mirrors the columns selected by `PgSqlTemplate.INDEX_DEFINITIONS`. The
+ * catalog returns snake_case column aliases; they are converted to camelCase
+ * before the row is typed (see `snakeToCamel`), so the property names follow
+ * the JavaScript convention.
+ */
+export interface PgIndexDefinition {
+  /** index name */
+  indexName: string
+  /** full `CREATE INDEX …` statement the index was created with */
+  indexDef: string
 }
 
 /**
@@ -231,6 +246,34 @@ export class PgRepositoryManager {
   }
 
   /**
+   * Read the index definitions of an entity's table.
+   *
+   * Runs {@link PgSqlTemplate.INDEX_DEFINITIONS} against the entity's
+   * datasource, binding the entity's schema and table. The query targets the
+   * master node so the result reflects any DDL already applied during the same
+   * bootstrap, rather than a possibly lagging replica.
+   *
+   * Returns one row per index (the catalog is ordered by `indexname`), or an
+   * empty array when the table has no index — which includes the case where the
+   * table does not exist yet.
+   *
+   * The catalog returns snake_case column aliases; every row is run through
+   * `snakeToCamel` so the result matches {@link PgIndexDefinition}'s camelCase
+   * property names.
+   *
+   * @param entity The entity metadata whose table is introspected.
+   */
+  async getIndexDefinitions(entity: PgEntityMetadata): Promise<PgIndexDefinition[]> {
+    const result = (await this.dataSources
+      .get(entity.dbName)
+      .query(PgSqlTemplate.INDEX_DEFINITIONS, [entity.schema, entity.table])) as {
+      rows: Record<string, unknown>[]
+    }
+
+    return result.rows.map(row => camelizeKeys<PgIndexDefinition>(row))
+  }
+
+  /**
    * Compare an entity's declared columns with a table's catalog definition.
    *
    * Every column of `entity.columns` is matched against `definitions` by name
@@ -357,13 +400,57 @@ export class PgRepositoryManager {
   }
 
   /**
+   * Ensure the indexes declared by an entity exist on its table.
+   *
+   * When the entity declares no index, the method is a no-op. Otherwise the
+   * table's existing indexes are read first (see
+   * {@link PgRepositoryManager.getIndexDefinitions}) and every declared index is
+   * matched against them by name: the name is derived deterministically from the
+   * table and the index columns (see `indexName`), so it is stable across boots.
+   * A declared index whose name is absent from the catalog contributes one
+   * statement built by {@link PgSqlTemplate.createIndex}, which carries the
+   * declared access method — a `unique` index becomes `CREATE UNIQUE INDEX`, a
+   * `gin` index a `USING gin` one using the `gin_trgm_ops` class.
+   *
+   * The statements are joined into one script (each already ends with `;`) and
+   * sent as a single parameterless query, so they are applied over one
+   * connection in one round trip. The method is a no-op when every declared
+   * index already exists.
+   *
+   * @param entity The entity metadata whose indexes are ensured.
+   */
+  async ensureIndex(entity: PgEntityMetadata): Promise<void> {
+    if (entity.indexes.length === 0) return
+
+    const label = `"${entity.schema}"."${entity.table}"`
+    const existing = await this.getIndexDefinitions(entity)
+    const existingNames = new Set(existing.map(definition => definition.indexName))
+
+    const statements = entity.indexes
+      .filter(index => !existingNames.has(indexName(entity.table, index)))
+      .map(index => PgSqlTemplate.createIndex(entity.schema, entity.table, index))
+
+    if (statements.length === 0) {
+      logger.success(`Database "${entity.dbName}": indexes of ${label} are up to date`)
+      return
+    }
+
+    logger.info(
+      `Database "${entity.dbName}": creating ${statements.length} index(es) on ${label} ...`,
+    )
+    await this.dataSources.get(entity.dbName).query(statements.join('\n'))
+    logger.success(`Database "${entity.dbName}": indexes of ${label} aligned`)
+  }
+
+  /**
    * Ensure the table backing an entity exists and its columns match the entity.
    *
    * Introspects the entity's table first (see
    * {@link PgRepositoryManager.getColumnDefinitions}): when it already has
    * columns, the table is left as-is and its columns are reconciled with the
-   * entity through {@link PgRepositoryManager.ensureColumns}. Otherwise the
-   * table is created from {@link PgSqlTemplate.createTable} — the statement is
+   * entity through {@link PgRepositoryManager.ensureColumns}, followed by its
+   * indexes through {@link PgRepositoryManager.ensureIndex}. Otherwise the table
+   * is created from {@link PgSqlTemplate.createTable} — the statement is
    * `CREATE TABLE IF NOT EXISTS`, so it stays safe if the table appears in
    * between.
    *
@@ -377,6 +464,7 @@ export class PgRepositoryManager {
     if (existing.length > 0) {
       logger.success(`Database "${entity.dbName}": table ${label} already exists`)
       await this.ensureColumns(entity, existing)
+      await this.ensureIndex(entity)
       return
     }
 

@@ -29,6 +29,30 @@ export class UserAccount {
   @PgColumn({ columnType: 'TEXT' })
   password!: string
 
+  @PgColumn({ columnType: 'BOOLEAN' })
+  enabled!: boolean
+
+  @PgColumn({ columnType: 'DATE' })
+  createdAt!: Date
+
+  @PgColumn({ columnType: 'DATE' })
+  updatedAt!: Date
+}
+
+@PgEntity({
+  schema: 'opencow',
+  indexes: [{ columns: ['nickname'], gin: true }],
+})
+export class User {
+  @PgKey()
+  id!: string
+
+  @PgColumn({ columnType: 'TEXT' })
+  nickname!: string
+
+  @PgColumn({ columnType: 'BOOLEAN' })
+  isAdmin!: boolean
+
   @PgColumn({ columnType: 'DATE' })
   createdAt!: Date
 

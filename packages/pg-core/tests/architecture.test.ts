@@ -78,6 +78,10 @@ describe('architecture — module layering', () => {
     expect(offenders('shared', /^typescript$|^pg$/)).toEqual([])
   })
 
+  it('shared must not import the runtime layer', () => {
+    expect(offenders('shared', importsLayer('runtime'))).toEqual([])
+  })
+
   it('runtime must not import the build-time layer or typescript', () => {
     expect(offenders('runtime', importsLayer('builder'))).toEqual([])
     expect(offenders('runtime', /^typescript$/)).toEqual([])

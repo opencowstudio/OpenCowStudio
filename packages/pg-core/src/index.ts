@@ -7,7 +7,8 @@
 // the TypeScript compiler API.
 //
 // Layering — dependencies flow one way only: `builder/ -> shared/ <- runtime/`.
-//   * shared/  : the pure type contract (no `typescript`, no `pg`)
+//   * shared/  : the cross-layer contract — metadata types + naming helpers
+//                (no `typescript`, no `pg`)
 //   * builder/ : decorator markers + build-time parsing
 //   * runtime/ : runtime implementation (may import `pg`)
 //
@@ -43,16 +44,19 @@ export type {
 
 // === runtime ===============================================================
 
-// Entity operation contract (CRUD) + column introspection types.
-export type {
-  PgEntityRepository,
-  PgColumnDefinition,
-  PgColumnMismatch,
-  PgColumnMismatchKind,
-} from './runtime/repository'
+// Entity operation contract (CRUD).
+export type { PgEntityRepository } from './runtime/repository'
 
 // Repository registry (one repository per scanned entity).
 export { PgRepositoryManager } from './runtime/repository'
+
+// Column introspection types (catalog rows + the divergences detected against
+// the entity metadata), owned by the storage bootstrap.
+export type {
+  PgColumnDefinition,
+  PgColumnMismatch,
+  PgColumnMismatchKind,
+} from './runtime/schema-sync'
 
 // SQL template catalogue (catalog introspection statements).
 export { DEFAULT_SCHEMA, PgSqlTemplate } from './runtime/sql'

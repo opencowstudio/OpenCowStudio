@@ -9,8 +9,10 @@ This package contains everything that does **not** depend on Nuxt.
 The source is split by lifecycle stage, and dependencies flow one way only:
 `builder/ -> shared/ <- runtime/`.
 
-- `shared/` — the metadata type contract (`types.ts` only; no `typescript`, no
-  `pg`).
+- `shared/` — the cross-layer contract shared by the builder and the runtime:
+  the metadata type definitions (`types.ts`) and the naming helpers that convert
+  between JavaScript names and PostgreSQL names (`naming.ts`); no `typescript`,
+  no `pg`.
 - `builder/` — the decorator markers + their option types
   (`builder/decorators.ts`) and the build-time parser/resolver
   (`builder/parser.ts`, the only place that imports the TypeScript compiler API);
@@ -32,6 +34,9 @@ out of the runtime bundle. These rules are enforced by
   `@PgEntity`, not through a separate decorator.
 - The shared `PgColumnType` primitive along with the raw/metadata shapes in
   `shared/types.ts`.
+- Naming helpers in `shared/naming.ts` that convert between a JavaScript name
+  and its PostgreSQL counterpart — `camelToSnake`, `snakeToCamel`,
+  `camelizeKeys` — used by both the builder and the runtime.
 - A build-time metadata pipeline (`builder/parser.ts`, exported from
   `@opencowstudio/pg-core/builder`): `parsePgEntity` / `parsePgEntities`
   statically read the decorator *source* via the TypeScript compiler API and
@@ -44,6 +49,10 @@ out of the runtime bundle. These rules are enforced by
   `PgEntityRepository<T, K>` with the `insert` / `update` / `delete` /
   `findById` surface, where `K` is the primary-key value type and the key
   property is `id`.
+- Startup storage synchronization (`runtime/schema-sync.ts`): the `SchemaSync`
+  service ensures the schemas, tables, columns and indexes the entities declare
+  exist and match, and records every script it executes in
+  `sql_execution_script`.
 
 Id-generation utilities (`generateGuid`, `generateId`) are re-exported from
 [`@opencowstudio/core`](../core) so they can be shared across packages.

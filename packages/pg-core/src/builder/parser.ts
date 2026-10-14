@@ -1,6 +1,7 @@
 import ts from 'typescript'
 import { normalize } from 'node:path'
 import { consola } from 'consola'
+import { camelToSnake } from '../shared/naming.ts'
 import type {
   PgColumnOptions,
   PgEntityOptions,
@@ -544,15 +545,6 @@ function positionText(node: ts.Node, sourceFile: ts.SourceFile): string {
 
 /** Database column name used for every entity's primary key. */
 const KEY_COLUMN = 'id'
-
-/** Convert a camelCase name (typically a field name) to snake_case. */
-function camelToSnake(name: string): string {
-  return name
-    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
-    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
-    .replace(/[\s-]+/g, '_')
-    .toLowerCase()
-}
 
 /**
  * Allowed pattern for a PostgreSQL name: the characters `a-zA-Z0-9_` only.

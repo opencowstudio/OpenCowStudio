@@ -340,6 +340,139 @@ export class PgSqlTemplate {
   }
 
   /**
+   * Build the `INSERT` statement for an entity.
+   *
+   * The column list is derived from the entity metadata: the key column first,
+   * then the declared columns in declaration order — the same order
+   * {@link PgSqlTemplate.createTable} emits, so the two stay aligned. Every
+   * column is written, so the statement always inserts a complete row.
+   *
+   * Identifiers cannot be bind parameters, so the schema, table and column
+   * names are quoted with `quoteIdentifier`, while the values themselves are
+   * bound positionally.
+   *
+   * Parameters: `$1` = the key value, `$2 … $n` = the values of
+   * {@link PgEntityMetadata.columns}, in order — one parameter per column, none
+   * omitted.
+   *
+   * The statement carries no `RETURNING` clause: it reports only that the row
+   * was inserted, and a caller that needs the stored row reads it back with its
+   * own `SELECT`.
+   *
+   * @param metadata The resolved entity metadata to build the statement from.
+   */
+  static insertRow(metadata: PgEntityMetadata): string {
+    const tableRef = qualifyTable(metadata.schema, metadata.table)
+    const columns = [metadata.key.column, ...metadata.columns.map(column => column.column)]
+    const placeholders = columns.map((_, index) => `$${index + 1}`)
+
+    return [
+      `INSERT INTO ${tableRef} (`,
+      columns.map(column => `  ${quoteIdentifier(column)}`).join(',\n'),
+      `) VALUES (${placeholders.join(', ')});`,
+    ].join('\n')
+  }
+
+  /**
+   * Build the `UPDATE` statement for an entity.
+   *
+   * The statement rewrites the whole row: every column declared by the entity
+   * metadata is assigned, in declaration order. The key column is the exception
+   * — it addresses the row in the `WHERE` clause instead of being assigned, so
+   * the statement can never rewrite a primary key. That matches the contract of
+   * a full-record update, where every column carries its new value.
+   *
+   * Identifiers cannot be bind parameters, so the schema, table and column
+   * names are quoted with `quoteIdentifier`, while the values themselves are
+   * bound positionally.
+   *
+   * Parameters: `$1 … $n` = the values of {@link PgEntityMetadata.columns}, in
+   * order, then `$n + 1` = the key value — the key is always the last parameter.
+   *
+   * The statement carries no `RETURNING` clause, matching
+   * {@link PgSqlTemplate.insertRow}.
+   *
+   * @param metadata The resolved entity metadata to build the statement from.
+   * @throws When the entity declares no columns to write, since the statement
+   *         would carry an empty assignment list.
+   */
+  static updateRow(metadata: PgEntityMetadata): string {
+    const columns = metadata.columns.map(column => column.column)
+    if (columns.length === 0) {
+      throw new Error(
+        `Cannot build an UPDATE for "${metadata.schema}"."${metadata.table}": ` +
+          'the entity declares no columns to write.',
+      )
+    }
+
+    const tableRef = qualifyTable(metadata.schema, metadata.table)
+    const assignments = columns.map((column, index) => `  ${quoteIdentifier(column)} = $${index + 1}`)
+
+    return [
+      `UPDATE ${tableRef} SET`,
+      assignments.join(',\n'),
+      `WHERE ${quoteIdentifier(metadata.key.column)} = $${columns.length + 1};`,
+    ].join('\n')
+  }
+
+  /**
+   * Build the `DELETE` statement for an entity.
+   *
+   * The row is addressed by the entity's key column, so the statement carries a
+   * single `WHERE` predicate — no other column takes part in it. Identifiers
+   * cannot be bind parameters, so the schema, table and column names are quoted
+   * with `quoteIdentifier`, while the key value is bound positionally.
+   *
+   * Parameters: `$1` = the key value.
+   *
+   * The statement carries no `RETURNING` clause, matching
+   * {@link PgSqlTemplate.insertRow} and {@link PgSqlTemplate.updateRow}:
+   * `rowCount` already reports whether a row matched, which is all a delete
+   * needs to answer.
+   *
+   * @param metadata The resolved entity metadata to build the statement from.
+   */
+  static deleteRow(metadata: PgEntityMetadata): string {
+    const tableRef = qualifyTable(metadata.schema, metadata.table)
+    return [
+      `DELETE FROM ${tableRef}`,
+      `WHERE ${quoteIdentifier(metadata.key.column)} = $1;`,
+    ].join('\n')
+  }
+
+  /**
+   * Build the primary-key lookup statement for an entity.
+   *
+   * The column list mirrors {@link PgSqlTemplate.insertRow}: the key column
+   * first, then the declared columns in declaration order, so a row read back
+   * has the same shape the insert wrote. The row is addressed by the entity's
+   * key column, so the statement carries a single `WHERE` predicate — no other
+   * column takes part in it.
+   *
+   * Identifiers cannot be bind parameters, so the schema, table and column
+   * names are quoted with `quoteIdentifier`, while the key value is bound
+   * positionally.
+   *
+   * Parameters: `$1` = the key value.
+   *
+   * The statement yields at most one row, so a key with no matching row is
+   * reported as an empty result rather than as an error.
+   *
+   * @param metadata The resolved entity metadata to build the statement from.
+   */
+  static selectRow(metadata: PgEntityMetadata): string {
+    const tableRef = qualifyTable(metadata.schema, metadata.table)
+    const columns = [metadata.key.column, ...metadata.columns.map(column => column.column)]
+
+    return [
+      'SELECT',
+      columns.map(column => `  ${quoteIdentifier(column)}`).join(',\n'),
+      `FROM ${tableRef}`,
+      `WHERE ${quoteIdentifier(metadata.key.column)} = $1;`,
+    ].join('\n')
+  }
+
+  /**
    * Create the table that records every executed SQL script.
    *
    * Parameters: none.

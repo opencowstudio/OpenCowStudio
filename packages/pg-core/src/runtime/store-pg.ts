@@ -1,0 +1,186 @@
+// ---------------------------------------------------------------------------
+// PgStore — the PostgreSQL implementation of `StoreProxy` (runtime)
+//
+// One `PgStore` drives the row primitives of a single entity against a single
+// database. It is handed the entity metadata — the table, the key column and
+// the `@PgColumn` column mapping — together with the `PgDataSource` the entity's
+// `dbName` resolves to, so it never creates or owns a connection pool.
+//
+// The datasource separates the two access paths — `PgDataSource.query` on the
+// master, `PgDataSource.queryRead` on a replica — and the store currently uses
+// the master for all four primitives. The primary-key lookup is included on
+// purpose: it must observe the row a write just committed, which a replica may
+// still be lagging behind.
+//
+// The four statements the store needs — insert, full-record update, delete and
+// the primary-key lookup — are built once from the entity metadata by the
+// constructor (see `PgSqlTemplate`), so a call only binds its parameters and
+// issues a statement it already holds.
+//
+// The store speaks rows, not entities: a row is keyed by PostgreSQL column name
+// (`PgKeyMetadata.column` / `PgColumnMetadata.column`), never by the camelCase
+// property name. Reads and writes therefore use the same shape, and mapping a
+// row to an entity is the caller's concern.
+// ---------------------------------------------------------------------------
+
+import { PgSqlTemplate } from './sql'
+import type { StoreProxy } from './store'
+import type { PgDataSource } from './datasource'
+import type { PgEntityMetadata } from '../shared/types.ts'
+
+/**
+ * PostgreSQL-backed {@link StoreProxy} for a single entity.
+ *
+ * The row primitives are expressed as SQL against the entity's table, with the
+ * column names taken from the entity metadata (a camelCase property maps to its
+ * snake_case column). `T` is the entity type; the key property is fixed to `id`
+ * and its value is always a `string`.
+ */
+export class PgStore<T> implements StoreProxy<T> {
+  /**
+   * Entity metadata the store was built for: the database, schema, table, key
+   * and columns the statements are derived from.
+   */
+  private readonly metadata: PgEntityMetadata
+
+  /**
+   * Datasource of the entity's database. The store never creates or owns a
+   * pool: every statement is issued through this datasource, writes through
+   * `query` (master) and reads through `queryRead` (a replica, or the master).
+   */
+  private readonly dataSource: PgDataSource
+
+  /** `INSERT` statement, built once from the entity metadata. */
+  private readonly insertSql: string
+
+  /** Full-record `UPDATE` statement, built once from the entity metadata. */
+  private readonly updateSql: string
+
+  /** `DELETE` statement, built once from the entity metadata. */
+  private readonly deleteSql: string
+
+  /** Primary-key lookup statement, built once from the entity metadata. */
+  private readonly selectSql: string
+
+  /**
+   * The metadata and the datasource are kept for the life of the store, and the
+   * four statements are built from the metadata once here — the metadata never
+   * changes for a given instance, so they are reused by every call.
+   *
+   * @param metadata   Resolved entity metadata — database, schema, table, key
+   *                   and columns — as produced by the build-time parser.
+   * @param dataSource Datasource of the entity's database; every statement is
+   *                   issued through it, so the store holds no pool of its own.
+   * @throws When {@link PgSqlTemplate.updateRow} cannot build the `UPDATE`, i.e.
+   *         the entity declares no columns to write.
+   */
+  constructor(metadata: PgEntityMetadata, dataSource: PgDataSource) {
+    this.metadata = metadata
+    this.dataSource = dataSource
+
+    this.insertSql = PgSqlTemplate.insertRow(metadata)
+    this.updateSql = PgSqlTemplate.updateRow(metadata)
+    this.deleteSql = PgSqlTemplate.deleteRow(metadata)
+    this.selectSql = PgSqlTemplate.selectRow(metadata)
+  }
+
+  /**
+   * Insert a new row and return it.
+   *
+   * The bound values follow the order {@link PgSqlTemplate.insertRow} declares:
+   * the key value first, then the declared columns in declaration order. Each
+   * value is read from `row` by PostgreSQL column name — the key through
+   * {@link PgKeyMetadata.column}, the columns through
+   * {@link PgColumnMetadata.column} — and a column `row` does not carry is bound
+   * as `null`.
+   *
+   * The statement carries no `RETURNING` clause, so nothing is read back from
+   * the database: the record that was written is the one `row` described, and it
+   * is returned as the stored entity.
+   *
+   * @param row The complete record to insert, including the key.
+   * @returns The inserted entity.
+   */
+  async insert(row: T): Promise<T> {
+    const fields = row as Record<string, unknown>
+    const values = [
+      fields[this.metadata.key.column] ?? null,
+      ...this.metadata.columns.map(({ column }) => fields[column] ?? null),
+    ]
+
+    await this.dataSource.query(this.insertSql, values)
+    return row
+  }
+
+  /**
+   * Replace the row whose key equals the key carried by `row`, and return it.
+   *
+   * The bound values follow the order {@link PgSqlTemplate.updateRow} declares:
+   * the declared columns in declaration order first, then the key value last —
+   * the reverse of {@link PgStore.insert}, where the key comes first. Each value
+   * is read from `row` by PostgreSQL column name — the columns through
+   * {@link PgColumnMetadata.column}, the key through
+   * {@link PgKeyMetadata.column} — and a column `row` does not carry is bound as
+   * `null`.
+   *
+   * The statement carries no `RETURNING` clause, so nothing is read back from
+   * the database: the record that was written is the one `row` described, and it
+   * is returned as the stored entity.
+   *
+   * @param row The complete record to replace, including the key.
+   * @returns The replaced entity.
+   */
+  async update(row: T): Promise<T> {
+    const fields = row as Record<string, unknown>
+    const values = [
+      ...this.metadata.columns.map(({ column }) => fields[column] ?? null),
+      fields[this.metadata.key.column] ?? null,
+    ]
+
+    await this.dataSource.query(this.updateSql, values)
+    return row
+  }
+
+  /**
+   * Delete the row whose key equals `id`.
+   *
+   * `id` is bound as the single parameter {@link PgSqlTemplate.deleteRow}
+   * declares, so at most one row can match.
+   *
+   * The statement carries no `RETURNING` clause, and a delete does not need one:
+   * the number of affected rows already reports whether a row matched, which is
+   * exactly what this method answers with.
+   *
+   * @param id The key of the row to delete.
+   * @returns whether a row was deleted — `false` when no row matched the key.
+   */
+  async delete(id: string): Promise<boolean> {
+    const { rowCount } = (await this.dataSource.query(this.deleteSql, [id])) as {
+      rowCount: number | null
+    }
+
+    return (rowCount ?? 0) > 0
+  }
+
+  /**
+   * Return the row whose key equals `id`, or `null` when it does not exist.
+   *
+   * The lookup goes through `PgDataSource.query` — the same master path as the
+   * writes — rather than the read path: a primary-key read must observe the row
+   * a write just committed, which a replica may still be lagging behind.
+   *
+   * `id` is bound as the single parameter {@link PgSqlTemplate.selectRow}
+   * declares. That statement reads back exactly the key column plus the declared
+   * columns, so the row arrives keyed by PostgreSQL column name — the same shape
+   * {@link PgStore.insert} and {@link PgStore.update} accept, which makes the
+   * round trip an identity.
+   *
+   * @param id The key of the row to read.
+   * @returns The stored row, or `null` when no row matches the key.
+   */
+  async findById(id: string): Promise<T | null> {
+    const { rows } = (await this.dataSource.query(this.selectSql, [id])) as { rows: T[] }
+
+    return rows[0] ?? null
+  }
+}

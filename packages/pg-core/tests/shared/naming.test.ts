@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { camelToSnake, camelizeKeys, snakeToCamel } from '../../src/shared/naming'
+import {
+  camelToSnake,
+  camelizeKeys,
+  snakeToCamel,
+  snakeizeKeys,
+} from '../../src/shared/naming'
 
 // Guards the convention `shared/naming.ts` documents: the two directions are
 // halves of one conversion, so they are tested together, including the
@@ -65,11 +70,40 @@ describe('camelizeKeys', () => {
     })
   })
 
-  it('should pass an already camelCase key through unchanged', () => {
-    expect(camelizeKeys({ udtName: 'int8' })).toEqual({ udtName: 'int8' })
+  it('should drop a key that is already camelCase', () => {
+    expect(camelizeKeys({ udtName: 'int8' })).toEqual({})
+  })
+
+  it('should only keep the keys that actually change', () => {
+    expect(camelizeKeys({ udtName: 'int8', column_name: 'id' })).toEqual({
+      columnName: 'id',
+    })
   })
 
   it('should return an empty object for an empty row', () => {
     expect(camelizeKeys({})).toEqual({})
+  })
+})
+
+describe('snakeizeKeys', () => {
+  it('should convert every key to snake_case and keep the values untouched', () => {
+    expect(snakeizeKeys({ columnName: 'id', columnDefault: null })).toEqual({
+      column_name: 'id',
+      column_default: null,
+    })
+  })
+
+  it('should drop a key that is already snake_case', () => {
+    expect(snakeizeKeys({ udt_name: 'int8' })).toEqual({})
+  })
+
+  it('should only keep the keys that actually change', () => {
+    expect(snakeizeKeys({ udt_name: 'int8', columnName: 'id' })).toEqual({
+      column_name: 'id',
+    })
+  })
+
+  it('should return an empty object for an empty row', () => {
+    expect(snakeizeKeys({})).toEqual({})
   })
 })

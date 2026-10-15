@@ -36,7 +36,7 @@ out of the runtime bundle. These rules are enforced by
   `shared/types.ts`.
 - Naming helpers in `shared/naming.ts` that convert between a JavaScript name
   and its PostgreSQL counterpart — `camelToSnake`, `snakeToCamel`,
-  `camelizeKeys` — used by both the builder and the runtime.
+  `camelizeKeys`, `snakeizeKeys` — used by both the builder and the runtime.
 - A build-time metadata pipeline (`builder/parser.ts`, exported from
   `@opencowstudio/pg-core/builder`): `parsePgEntity` / `parsePgEntities`
   statically read the decorator *source* via the TypeScript compiler API and

@@ -6,7 +6,8 @@
 // lives in `shared/`: the builder derives a table / column name from the class
 // and property names (`camelToSnake`), while the runtime turns the snake_case
 // names the catalog reports into the camelCase shape the runtime types use
-// (`snakeToCamel`, `camelizeKeys`).
+// (`snakeToCamel`, `camelizeKeys`). `snakeizeKeys` applies the same bulk
+// rewrite to a whole row in the opposite direction.
 //
 // `shared/` is the only layer `builder/` and `runtime/` may both import from
 // (see tests/architecture.test.ts), so the convention can only be defined once
@@ -49,14 +50,62 @@ export function snakeToCamel(name: string): string {
 }
 
 /**
- * Rebuild a row with every key converted to camelCase: `column_default` →
- * `columnDefault`.
+ * Rebuild a row keeping only the keys that actually change: `column_default` →
+ * `columnDefault`. A key that `snakeToCamel` leaves untouched is dropped.
  *
- * The values are carried over untouched. `T` is the shape the caller expects
- * the converted row to have; it is not validated at runtime.
+ * The values of the kept entries are carried over untouched. Every converted key
+ * remembers the snake_case key it came from; those original keys are removed
+ * from the result before it is returned, so only the camelCase spelling
+ * survives. `T` is the shape the caller expects the converted row to have; it is
+ * not validated at runtime.
  */
 export function camelizeKeys<T>(row: Record<string, unknown>): T {
-  return Object.fromEntries(
-    Object.entries(row).map(([key, value]) => [snakeToCamel(key), value]),
-  ) as T
+  const result: Record<string, unknown> = {}
+  const originalKeys: string[] = []
+
+  for (const [key, value] of Object.entries(row)) {
+    const camelKey = snakeToCamel(key)
+    if (camelKey !== key) {
+      result[camelKey] = value
+      // Remember the source key so it can be dropped again below.
+      originalKeys.push(key)
+    }
+  }
+
+  for (const originalKey of originalKeys) {
+    delete result[originalKey]
+  }
+
+  return result as T
+}
+
+/**
+ * Reverse of {@link camelizeKeys}: rebuild a row keeping only the keys that
+ * actually change, `columnDefault` → `column_default`. A key that `camelToSnake`
+ * leaves untouched is dropped.
+ *
+ * `camelToSnake` lowercases its input, so a converted key may collide with an
+ * already snake_case key of the row; the source keys are remembered and removed
+ * before the result is returned, so only the snake_case spelling survives. The
+ * values of the kept entries are carried over untouched. `T` is the shape the
+ * caller expects the converted row to have; it is not validated at runtime.
+ */
+export function snakeizeKeys<T>(row: Record<string, unknown>): T {
+  const result: Record<string, unknown> = {}
+  const originalKeys: string[] = []
+
+  for (const [key, value] of Object.entries(row)) {
+    const snakeKey = camelToSnake(key)
+    if (snakeKey !== key) {
+      result[snakeKey] = value
+      // Remember the source key so it can be dropped again below.
+      originalKeys.push(key)
+    }
+  }
+
+  for (const originalKey of originalKeys) {
+    delete result[originalKey]
+  }
+
+  return result as T
 }

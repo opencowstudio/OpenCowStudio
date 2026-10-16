@@ -17,13 +17,6 @@ export interface ModuleOptions {
    * @default 'app.config.yaml'
    */
   configFile?: string
-  /**
-   * Glob patterns that locate the entity source files to scan. Each pattern is
-   * resolved relative to the Nuxt root directory. The matched files are
-   * collected at build time for downstream entity registration.
-   * @default ['server/entities/**\/*.ts']
-   */
-  entityPaths?: string[]
 }
 
 export default defineNuxtModule<ModuleOptions>({
@@ -37,7 +30,6 @@ export default defineNuxtModule<ModuleOptions>({
   defaults: {
     enabled: true,
     configFile: 'app.config.yaml',
-    entityPaths: ['server/entities/**/*.ts'],
   },
   async setup(options, nuxt) {
     await setupModule(options, nuxt)

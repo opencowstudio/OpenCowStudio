@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Nuxt } from 'nuxt/schema'
@@ -13,14 +13,17 @@ import { addTemplate } from '@nuxt/kit'
 import { registerPgEntityManifest, PG_ENTITIES_MANIFEST_ALIAS } from '../../src/builder/manifest'
 
 // Resolve to the package root (test file lives in tests/builder, so three
-// levels up) so the scanner reads fixtures and resolves `@opencowstudio/pg-core`.
+// levels up) so the temp root scanned by each test shares the package's
+// `node_modules` and the entity source can resolve `@opencowstudio/pg-core`.
 const PKG_ROOT = resolve(fileURLToPath(import.meta.url), '../../..')
 
-// The User entity lives as a static fixture under `tests/fixtures/entities` so
-// the scanner can read it directly — no temporary file is written per test.
-const ENTITY_FIXTURE_PATTERN = join(PKG_ROOT, 'tests/fixtures/entities/**/*.ts')
+// The User entity is kept as a static fixture under `tests/fixtures/entities`,
+// but a scan never reads anything under `tests/`, so each test copies the
+// fixture into the `server/entities/` directory of its own temp root — the
+// fixed location the scanner looks at.
+const ENTITY_FIXTURE = join(PKG_ROOT, 'tests/fixtures/entities/user.ts')
 
-// Temp root used only for the "no entities" case, so its scan matches nothing.
+// Temp Nuxt root used by every test.
 let dir: string | null = null
 
 afterEach(() => {
@@ -37,14 +40,22 @@ beforeEach(() => {
   dir = mkdtempSync(join(PKG_ROOT, '.entity-scan-'))
 })
 
+/** Copy the User fixture into `<rootDir>/server/entities/user.ts`. */
+function writeEntity(rootDir: string): void {
+  const entitiesDir = join(rootDir, 'server/entities')
+  mkdirSync(entitiesDir, { recursive: true })
+  writeFileSync(join(entitiesDir, 'user.ts'), readFileSync(ENTITY_FIXTURE, 'utf8'))
+}
+
 function makeNuxt(rootDir: string = dir!): Nuxt {
   return { options: { alias: {}, rootDir } } as unknown as Nuxt
 }
 
 describe('registerPgEntityManifest', () => {
   it('registers a template and exposes it via the #pg-entities-manifest alias', async () => {
-    const nuxt = makeNuxt(PKG_ROOT)
-    const dst = await registerPgEntityManifest(nuxt, [ENTITY_FIXTURE_PATTERN])
+    writeEntity(dir!)
+    const nuxt = makeNuxt()
+    const dst = await registerPgEntityManifest(nuxt)
     expect(dst).toBe('/virtual/pg.entities.manifest.ts')
     expect(addTemplate).toHaveBeenCalledOnce()
 
@@ -55,7 +66,8 @@ describe('registerPgEntityManifest', () => {
   })
 
   it('serializes scanned entities into a formatted JSON string', async () => {
-    await registerPgEntityManifest(makeNuxt(PKG_ROOT), [ENTITY_FIXTURE_PATTERN])
+    writeEntity(dir!)
+    await registerPgEntityManifest(makeNuxt())
 
     const opts = (addTemplate as ReturnType<typeof vi.fn>).mock.calls[0]![0]
     const contents = opts.getContents()
@@ -68,11 +80,11 @@ describe('registerPgEntityManifest', () => {
     // resolves at runtime, expressed relative to the Nuxt root.
     expect(contents).toContain('className')
     expect(contents).toContain('modulePath')
-    expect(contents).toContain('/tests/fixtures/entities/user.ts')
+    expect(contents).toContain('/server/entities/user.ts')
   })
 
   it('writes an empty array string when no entities match', async () => {
-    await registerPgEntityManifest(makeNuxt(), ['server/entities/**/*.ts'])
+    await registerPgEntityManifest(makeNuxt())
     const opts = (addTemplate as ReturnType<typeof vi.fn>).mock.calls[0]![0]
     const contents = opts.getContents()
     expect(contents).toContain('"[]"')

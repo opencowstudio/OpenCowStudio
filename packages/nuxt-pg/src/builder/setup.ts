@@ -5,7 +5,7 @@ import { registerPgManifest, registerPgEntityManifest } from './manifest'
 
 /**
  * Bootstrap the nuxt-pg module at build time:
- *  1. scan the configured entity paths and bake the entity manifest,
+ *  1. scan the entity source files and bake the entity manifest,
  *  2. read & serialize the pg config file into a server-only manifest,
  *  3. register the Nitro plugin that instantiates the datasource manager.
  *
@@ -20,11 +20,13 @@ export async function setupModule(options: ModuleOptions, nuxt: Nuxt): Promise<v
 
   const resolver = createResolver(import.meta.url)
 
-  // Scan the configured entity paths, resolve each entity into a
-  // PgEntityMetadata, and bake the collection into a server-only manifest at
-  // build time. The runtime can later parse the JSON string back into entity
-  // metadata.
-  await registerPgEntityManifest(nuxt, options.entityPaths!)
+  // Scan the entity source files, resolve each entity into a PgEntityMetadata,
+  // and bake the collection into a server-only manifest at build time. The
+  // runtime can later parse the JSON string back into entity metadata.
+  //
+  // The scanned locations are fixed by the scanner itself: every entity lives
+  // in an `entities/` directory below the Nuxt root.
+  await registerPgEntityManifest(nuxt)
 
   // Locate, read and serialize the pg config file into a server-only manifest
   // at build time. The runtime parses the JSON string back into metadata.

@@ -70,10 +70,14 @@ export function registerPgManifest(nuxt: Nuxt, configFile: string): string {
 }
 
 /**
- * Scan the configured entity paths, resolve every discovered entity class into
- * a `PgEntityMetadata` by parsing its decorators statically (no module import,
+ * Scan the entity source files, resolve every discovered entity class into a
+ * `PgEntityMetadata` by parsing its decorators statically (no module import,
  * no class instantiation), serialize the collection to a formatted JSON string,
  * and bake that string into a server-only manifest at build time.
+ *
+ * The scanned locations are fixed (see `scanEntityPaths`): every entity lives
+ * in an `entities/` directory below the Nuxt root, and anything under a `tests`
+ * directory is a fixture and therefore skipped.
  *
  * Besides the decorator-derived metadata, every entity records its class name
  * and the module path (`import.meta.glob` form, relative to the Nuxt root) it is
@@ -83,11 +87,11 @@ export function registerPgManifest(nuxt: Nuxt, configFile: string): string {
  *
  * @returns The destination path of the generated manifest template.
  */
-export async function registerPgEntityManifest(nuxt: Nuxt, entityPaths: string[]): Promise<string> {
+export async function registerPgEntityManifest(nuxt: Nuxt): Promise<string> {
   const logger = useLogger(MODULE_NAME)
 
-  // Collect entity source files from the configured glob patterns.
-  const files = await scanEntityPaths(nuxt.options.rootDir, entityPaths)
+  // Collect entity source files from the fixed entity patterns.
+  const files = await scanEntityPaths(nuxt.options.rootDir)
   logger.info(`Scanned ${files.length} entity file(s) from entity paths`)
 
   // Resolve each entity class statically (via the TypeScript compiler API) into

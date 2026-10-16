@@ -41,13 +41,11 @@ describe('setupModule', () => {
     const options = {
       enabled: true,
       configFile: 'app.config.yaml',
-      entityPaths: ['server/entities/**/*.ts'],
     }
     await setupModule(options, nuxt)
 
-    expect(registerPgEntityManifest).toHaveBeenCalledWith(nuxt, [
-      'server/entities/**/*.ts',
-    ])
+    // The scanned entity locations are fixed, so nothing is passed along.
+    expect(registerPgEntityManifest).toHaveBeenCalledWith(nuxt)
     expect(registerPgManifest).toHaveBeenCalledWith(nuxt, 'app.config.yaml')
     expect(addServerPlugin).toHaveBeenCalledWith(
       '../runtime/plugins/bootstrap',

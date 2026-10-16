@@ -11,8 +11,8 @@ application.
   serializes it to a formatted JSON string, logs it, and bakes that string into a
   **server-only** manifest (`pg.manifest.ts`), so credentials never reach the
   client bundle.
-- At build time it scans the configured `entityPaths` (default
-  `server/entities/**/*.ts`), resolves every discovered entity class into a
+- At build time it scans the entity source files (`**/entities/**/*.ts` relative
+  to the Nuxt root), resolves every discovered entity class into a
   `PgEntityMetadata` (validated, defaulted and normalised), logs the total number
   of scanned entities and each resolved table, and bakes the collection into a
   **server-only** manifest (`pg.entities.manifest.ts`) as a formatted JSON

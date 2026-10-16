@@ -64,6 +64,11 @@ describe('registerPgEntityManifest', () => {
     expect(contents).toContain('dbName')
     expect(contents).toContain('columns')
     expect(contents).toContain('users')
+    // Each entity records its class name and the module path `import.meta.glob`
+    // resolves at runtime, expressed relative to the Nuxt root.
+    expect(contents).toContain('className')
+    expect(contents).toContain('modulePath')
+    expect(contents).toContain('/tests/fixtures/entities/user.ts')
   })
 
   it('writes an empty array string when no entities match', async () => {

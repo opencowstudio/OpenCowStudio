@@ -55,6 +55,16 @@ export interface PgIndexMetadata {
 
 /** Metadata stored on a class by @PgEntity */
 export interface PgEntityMetadata {
+  /** the entity class name, as declared in its source file (e.g. `User`) */
+  className: string
+  /**
+   * Path of the module declaring the entity, as addressed by `import.meta.glob`
+   * at runtime. The exact form is decided by the caller resolving it — the Nuxt
+   * module records it relative to the project root with a leading `/` (e.g.
+   * `/server/entities/user.ts`) — so the runtime can load the class through
+   * `(await modules[modulePath]())[className]`.
+   */
+  modulePath: string
   dbName: string
   schema: string
   table: string

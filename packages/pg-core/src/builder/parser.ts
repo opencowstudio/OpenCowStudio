@@ -44,8 +44,19 @@ const logger = consola.withTag('pg-parser')
 // `PgEntityMetadata`.
 // ---------------------------------------------------------------------------
 
+/** Options controlling how a single entity's metadata is assembled. */
+export interface ParsePgEntityOptions {
+  /**
+   * Resolve the `modulePath` recorded on an entity from the absolute path of the
+   * source file declaring it. The caller decides the form the runtime needs — the
+   * Nuxt module records it relative to the project root so it can be used as an
+   * `import.meta.glob` key. Defaults to the source file path as-is.
+   */
+  resolveModulePath?: (sourceFile: string) => string
+}
+
 /** Options controlling program creation and parsing behaviour. */
-export interface ParseProgramOptions {
+export interface ParseProgramOptions extends ParsePgEntityOptions {
   /** Override the default compiler options used to build the Program. */
   compilerOptions?: ts.CompilerOptions
   /**
@@ -236,16 +247,24 @@ export function parsePgColumn(
  * This is where correctness is enforced: identifiers are validated, missing
  * values get their defaults, and boolean options are type-checked. Diagnostic
  * messages are logged before throwing.
+ *
+ * The recorded `className` identifies the class inside its module and
+ * `modulePath` the module itself, so the runtime can load the class by resolving
+ * `modulePath` through `import.meta.glob` and reading `className` off the module.
  */
 export function parsePgEntity(
   node: ts.ClassDeclaration,
   sourceFile: ts.SourceFile,
+  options: ParsePgEntityOptions = {},
 ): PgEntityMetadata | undefined {
   const entityDecorator = getDecorator(node, 'PgEntity')
   if (!node.name || !entityDecorator) return undefined
 
   const className = node.name.text
-  const options = parseClassDecorator(entityDecorator, sourceFile) // Step 3
+  const modulePath = options.resolveModulePath
+    ? options.resolveModulePath(sourceFile.fileName)
+    : sourceFile.fileName
+  const entityOptions = parseClassDecorator(entityDecorator, sourceFile) // Step 3
   const { key, columns } = parsePropertyDecorators(node.members, sourceFile) // Step 4
 
   if (!key) {
@@ -255,17 +274,17 @@ export function parsePgEntity(
   }
 
   // --- entity-level identifiers & defaults ---
-  const dbName = options.dbName?.trim() ? options.dbName : 'default'
-  const schema = options.schema?.trim() ? options.schema : 'public'
-  const table = options.table?.trim() ? options.table : camelToSnake(className)
+  const dbName = entityOptions.dbName?.trim() ? entityOptions.dbName : 'default'
+  const schema = entityOptions.schema?.trim() ? entityOptions.schema : 'public'
+  const table = entityOptions.table?.trim() ? entityOptions.table : camelToSnake(className)
 
   assertValidPgName(dbName, 'dbName', `entity ${className}`)
   assertValidPgName(schema, 'schema', `entity ${className}`)
   assertValidPgName(table, 'table', `entity ${className}`)
 
-  const createTableAuto = resolveBoolean(options.createTableAuto, true, `entity ${className}.createTableAuto`)
-  const addColumnAuto = resolveBoolean(options.addColumnAuto, true, `entity ${className}.addColumnAuto`)
-  const createIndexAuto = resolveBoolean(options.createIndexAuto, true, `entity ${className}.createIndexAuto`)
+  const createTableAuto = resolveBoolean(entityOptions.createTableAuto, true, `entity ${className}.createTableAuto`)
+  const addColumnAuto = resolveBoolean(entityOptions.addColumnAuto, true, `entity ${className}.addColumnAuto`)
+  const createIndexAuto = resolveBoolean(entityOptions.createIndexAuto, true, `entity ${className}.createIndexAuto`)
 
   // --- key field ---
   // The key column name is fixed to `id`; `@PgKey` carries no column option, so
@@ -296,13 +315,15 @@ export function parsePgEntity(
 
   // --- index fields ---
   // Resolved last: an index is validated against the key and the columns above.
-  const indexes = resolveIndexes(options.indexes, className, keyMetadata, columnMetadata)
+  const indexes = resolveIndexes(entityOptions.indexes, className, keyMetadata, columnMetadata)
 
   return {
+    className,
+    modulePath,
     dbName,
     schema,
     table,
-    comment: options.comment ?? '',
+    comment: entityOptions.comment ?? '',
     createTableAuto,
     addColumnAuto,
     createIndexAuto,
@@ -329,13 +350,13 @@ export function parsePgEntities(
   for (const { node, sourceFile } of classes) {
     if (options.skipInvalid) {
       try {
-        const metadata = parsePgEntity(node, sourceFile) // Steps 3–7
+        const metadata = parsePgEntity(node, sourceFile, options) // Steps 3–7
         if (metadata) result.push(metadata)
       } catch (err) {
         logger.warn(`Skipping entity "${node.name?.text ?? 'anonymous'}": ${String(err)}`)
       }
     } else {
-      const metadata = parsePgEntity(node, sourceFile) // Steps 3–7
+      const metadata = parsePgEntity(node, sourceFile, options) // Steps 3–7
       if (metadata) result.push(metadata)
     }
   }

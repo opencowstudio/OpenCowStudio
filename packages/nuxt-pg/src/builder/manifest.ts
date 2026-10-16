@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { relative, resolve, sep } from 'node:path'
 import { addTemplate, useLogger } from '@nuxt/kit'
 import type { Nuxt } from 'nuxt/schema'
 import { parsePgEntities } from '@opencowstudio/pg-core/builder'
@@ -44,7 +44,6 @@ export function registerPgManifest(nuxt: Nuxt, configFile: string): string {
       logger.warn(`No \`pg\` namespace found in config file: ${configPath}`)
     } else {
       pgConfigJson = JSON.stringify(pgNamespace, null, 2)
-      logger.info(`Pg config JSON:\n${pgConfigJson}`)
     }
   }
 
@@ -76,6 +75,10 @@ export function registerPgManifest(nuxt: Nuxt, configFile: string): string {
  * no class instantiation), serialize the collection to a formatted JSON string,
  * and bake that string into a server-only manifest at build time.
  *
+ * Besides the decorator-derived metadata, every entity records its class name
+ * and the module path (`import.meta.glob` form, relative to the Nuxt root) it is
+ * declared in, so the runtime can load the class from the module.
+ *
  * Build-time only — this helper must never be imported from the runtime.
  *
  * @returns The destination path of the generated manifest template.
@@ -90,13 +93,19 @@ export async function registerPgEntityManifest(nuxt: Nuxt, entityPaths: string[]
   // Resolve each entity class statically (via the TypeScript compiler API) into
   // its validated metadata. Files that fail to parse are skipped with a warning
   // so a single bad entity does not abort the whole build.
-  const entities: PgEntityMetadata[] = parsePgEntities(files, { skipInvalid: true })
+  //
+  // Each entity also records its class name and the module it is declared in,
+  // expressed relative to the Nuxt root (with a leading `/` and POSIX
+  // separators) so the runtime can resolve it through `import.meta.glob`.
+  const entities: PgEntityMetadata[] = parsePgEntities(files, {
+    skipInvalid: true,
+    resolveModulePath: file => `/${relative(nuxt.options.rootDir, file).split(sep).join('/')}`,
+  })
   for (const entity of entities) {
-    logger.info(`Resolved entity table "${entity.table}"`)
+    logger.info(`Resolved entity table "${entity.table}" (class ${entity.className}, module ${entity.modulePath})`)
   }
 
   const pgEntitiesJson = JSON.stringify(entities, null, 2)
-  logger.info(`Pg entities JSON:\n${pgEntitiesJson}`)
 
   const manifest = addTemplate({
     filename: 'pg.entities.manifest.ts',

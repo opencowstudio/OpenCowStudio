@@ -26,6 +26,8 @@ const UNIQUE_INDEX: PgIndexMetadata = { columns: ['name'], unique: true, gin: fa
 const GIN_INDEX: PgIndexMetadata = { columns: ['name'], unique: false, gin: true }
 
 const ENTITY: PgEntityMetadata = {
+  className: 'User',
+  modulePath: '/server/entities/user.ts',
   dbName: 'default',
   schema: SCHEMA,
   table: TABLE,

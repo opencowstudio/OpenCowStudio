@@ -9,6 +9,8 @@ import type { PgColumnDefinition, PgColumnMetadata, PgEntityMetadata } from '../
 /** Build the minimal entity metadata carrying `columns`. */
 export function entityWith(columns: PgColumnMetadata[]): PgEntityMetadata {
   return {
+    className: 'Sample',
+    modulePath: '/server/entities/sample.ts',
     dbName: 'default',
     schema: 'public',
     table: 'sample',

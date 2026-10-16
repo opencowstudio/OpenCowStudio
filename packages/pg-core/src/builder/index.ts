@@ -18,6 +18,7 @@ export {
   assertValidPgName,
 } from './parser'
 export type {
+  ParsePgEntityOptions,
   ParseProgramOptions,
   ParsedPropertyDecorators,
   ParsedKeyField,

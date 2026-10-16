@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import { describe, it, expect } from 'vitest'
+import { basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parsePgEntities } from '../../src/builder'
 import type { PgEntityMetadata } from '../../src'
@@ -102,6 +103,15 @@ describe('builder parser — parsePgEntities (filesystem Program)', () => {
     expect(meta.key).toEqual({ propertyKey: 'id', column: 'id', generated: false, comment: '', columnType: 'TEXT' })
     expect(meta.columns.map(c => c.propertyKey).sort()).toEqual(['createdAt', 'displayName', 'email'])
     expect(meta.indexes).toEqual([{ columns: ['email'], unique: true, gin: false }])
+  })
+
+  it('should record the entity class name and the module path it is declared in', () => {
+    const metas = parsePgEntities([entity('user.ts')], {
+      resolveModulePath: file => `/server/entities/${basename(file)}`,
+    })
+    expect(metas).toHaveLength(1)
+    expect(metas[0]!.className).toBe('User')
+    expect(metas[0]!.modulePath).toBe('/server/entities/user.ts')
   })
 
   it('should parse multiple entity files at once', () => {

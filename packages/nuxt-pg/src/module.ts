@@ -12,7 +12,7 @@ export interface ModuleOptions {
   /**
    * Path to the PostgreSQL datasource configuration file (YAML). The path is
    * resolved relative to the Nuxt root directory. When the file exists its `pg`
-   * namespace is serialized to a JSON string at build time and baked into a
+   * namespace is parsed into a `PgConfigMetadata` at build time and baked into a
    * server-only manifest, so credentials never reach the client bundle.
    * @default 'app.config.yaml'
    */

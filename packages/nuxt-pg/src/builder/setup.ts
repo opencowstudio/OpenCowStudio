@@ -6,7 +6,7 @@ import { registerPgManifest, registerPgEntityManifest } from './manifest'
 /**
  * Bootstrap the nuxt-pg module at build time:
  *  1. scan the entity source files and bake the entity manifest,
- *  2. read & serialize the pg config file into a server-only manifest,
+ *  2. read & parse the pg config file into a server-only manifest,
  *  3. register the Nitro plugin that instantiates the datasource manager.
  *
  * Extracted from `defineNuxtModule`'s `setup` hook so the orchestration can be
@@ -28,8 +28,8 @@ export async function setupModule(options: ModuleOptions, nuxt: Nuxt): Promise<v
   // in an `entities/` directory below the Nuxt root.
   await registerPgEntityManifest(nuxt)
 
-  // Locate, read and serialize the pg config file into a server-only manifest
-  // at build time. The runtime parses the JSON string back into metadata.
+  // Locate, read and parse the pg config file into a server-only manifest at
+  // build time. The runtime imports the typed metadata directly.
   registerPgManifest(nuxt, options.configFile!)
 
   // Register the Nitro plugin that instantiates the datasource manager.

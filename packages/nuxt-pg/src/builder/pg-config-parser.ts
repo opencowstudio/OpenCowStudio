@@ -1,4 +1,3 @@
-import { consola } from 'consola'
 import type {
   PgConfigMetadata,
   PgDatabaseMetadata,
@@ -6,12 +5,10 @@ import type {
   PgPoolMetadata,
 } from '@opencowstudio/pg-core'
 
-const logger = consola.withTag('nuxt-pg')
-
 /**
- * Thrown when a plain JSON value cannot be coerced into the expected
- * `PgConfigMetadata` shape. Carries the offending config path, the expected
- * type, and the raw value so callers can emit a detailed diagnostic.
+ * Thrown when the `pg` namespace of the config file cannot be coerced into the
+ * expected `PgConfigMetadata` shape. Carries the offending config path, the
+ * expected type, and the raw value so callers can emit a detailed diagnostic.
  */
 export class PgConfigParseError extends Error {
   readonly path: string
@@ -29,7 +26,7 @@ export class PgConfigParseError extends Error {
   }
 }
 
-/** Human-readable, single-line description of an arbitrary value for logging. */
+/** Human-readable, single-line description of an arbitrary value for messages. */
 function describeValue(value: unknown): string {
   if (typeof value === 'string') return JSON.stringify(value)
   if (value === null) return 'null'
@@ -76,7 +73,8 @@ function coerceNumber(value: unknown, path: string): number {
 /**
  * Coerce a value to a string. Accepts numbers/booleans too, because an
  * unquoted YAML value like `password: 1234` is parsed as a number and should
- * still be usable as a credential string.
+ * still be usable as a credential string. `${VAR:default}` placeholders are
+ * left intact — they are resolved from the environment at runtime.
  */
 function coerceString(value: unknown, path: string): string {
   if (typeof value === 'string') return value
@@ -130,42 +128,36 @@ function toDatabaseMeta(raw: unknown, path: string): PgDatabaseMetadata {
 }
 
 /**
- * Fault-tolerant conversion of a plain JSON object (as produced by parsing the
- * build-time `#pg-manifest` string) into a typed `PgConfigMetadata`.
+ * Fault-tolerant conversion of the `pg` namespace read from the config file
+ * into a typed `PgConfigMetadata`, performed once at build time so the manifest
+ * can bake the already-typed metadata and the runtime can consume it directly.
  *
  * String values are automatically coerced to their target types — e.g. the
  * pool field `max` authored as the YAML string `"18"` is parsed into the
- * number `18`. When coercion fails, a detailed error is logged and a
- * `PgConfigParseError` is thrown.
+ * number `18`. When coercion fails, a `PgConfigParseError` carrying the
+ * offending config path is thrown so the build fails loudly.
  *
- * @param raw The parsed JSON value (already `JSON.parse`-ed from the manifest).
+ * Build-time only — this helper must never be imported from the runtime.
+ *
+ * @param raw The raw `pg` namespace parsed from the config file's YAML.
  * @param rootPath Used to build human-readable paths in error messages.
  */
 export function parsePgConfig(raw: unknown, rootPath = 'pg'): PgConfigMetadata {
-  try {
-    if (!isPlainObject(raw)) {
-      throw new PgConfigParseError(rootPath, 'object', raw)
-    }
-
-    const pool = toPoolMeta(raw.pool, `${rootPath}.pool`)
-
-    const databasesRaw = raw.databases
-    if (!isPlainObject(databasesRaw)) {
-      throw new PgConfigParseError(`${rootPath}.databases`, 'object', databasesRaw)
-    }
-
-    const databases: Record<string, PgDatabaseMetadata> = {}
-    for (const [dbName, dbRaw] of Object.entries(databasesRaw)) {
-      databases[dbName] = toDatabaseMeta(dbRaw, `${rootPath}.databases.${dbName}`)
-    }
-
-    return { pool, databases }
-  } catch (err) {
-    if (err instanceof PgConfigParseError) {
-      logger.error(`Failed to build pg config metadata: ${err.message}`)
-    } else {
-      logger.error('Failed to build pg config metadata:', err)
-    }
-    throw err
+  if (!isPlainObject(raw)) {
+    throw new PgConfigParseError(rootPath, 'object', raw)
   }
+
+  const pool = toPoolMeta(raw.pool, `${rootPath}.pool`)
+
+  const databasesRaw = raw.databases
+  if (!isPlainObject(databasesRaw)) {
+    throw new PgConfigParseError(`${rootPath}.databases`, 'object', databasesRaw)
+  }
+
+  const databases: Record<string, PgDatabaseMetadata> = {}
+  for (const [dbName, dbRaw] of Object.entries(databasesRaw)) {
+    databases[dbName] = toDatabaseMeta(dbRaw, `${rootPath}.databases.${dbName}`)
+  }
+
+  return { pool, databases }
 }

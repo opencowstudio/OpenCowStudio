@@ -32,8 +32,9 @@ function mockRuntime(pgConfig: PgConfigMetadata | null, entities: PgEntityMetada
     this.createRepositories = createRepositories
   })
 
-  // Each manifest carries its payload as a formatted JSON string.
-  const pgConfigJson = pgConfig ? JSON.stringify(pgConfig, null, 2) : null
+  // The config manifest already carries typed metadata, while the entity
+  // manifest still carries its payload as a JSON string.
+  const pgConfigMetadata = pgConfig
   const pgEntitiesJson = JSON.stringify(entities)
 
   vi.doMock('nitropack/runtime', () => ({
@@ -43,7 +44,7 @@ function mockRuntime(pgConfig: PgConfigMetadata | null, entities: PgEntityMetada
     PgDataSourceManager: PgDataSourceManagerSpy,
     PgRepositoryManager: PgRepositoryManagerSpy,
   }))
-  vi.doMock('#pg-manifest', () => ({ pgConfigJson }))
+  vi.doMock('#pg-manifest', () => ({ pgConfigMetadata }))
   vi.doMock('#pg-entities-manifest', () => ({ pgEntitiesJson }))
 
   return { PgDataSourceManagerSpy, PgRepositoryManagerSpy, createRepositories, initializeSql }
@@ -82,7 +83,7 @@ describe('bootstrap nitro plugin', () => {
     const { PgDataSourceManager } = await import('@opencowstudio/pg-core')
     expect(PgDataSourceManager).toBe(PgDataSourceManagerSpy)
     expect(PgDataSourceManagerSpy).toHaveBeenCalledTimes(1)
-    // The plugin parses the manifest's JSON string back into the metadata.
+    // The plugin consumes the manifest's typed metadata directly.
     expect(PgDataSourceManagerSpy).toHaveBeenCalledWith(cfg)
     // The plugin runs the per-database initialization SQL on the manager.
     expect(initializeSql).toHaveBeenCalledTimes(1)
@@ -94,7 +95,7 @@ describe('bootstrap nitro plugin', () => {
     expect(createRepositories).toHaveBeenCalledWith([])
   })
 
-  it('resolves ${VAR:default} placeholders from the environment before parsing', async () => {
+  it('resolves ${VAR:default} placeholders from the environment', async () => {
     const previous = process.env.PG_TEST_PASSWORD
     process.env.PG_TEST_PASSWORD = 'resolved-secret'
     try {

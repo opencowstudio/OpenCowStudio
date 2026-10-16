@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parsePgConfig, PgConfigParseError } from '../../../src/runtime/utils/pgConfig'
+import { parsePgConfig, PgConfigParseError } from '../../src/builder/pg-config-parser'
 
 describe('parsePgConfig', () => {
   it('builds metadata from a fully numeric config', () => {
@@ -63,6 +63,26 @@ describe('parsePgConfig', () => {
     const meta = parsePgConfig(raw)
 
     expect(meta.databases.default.master.password).toBe('1234')
+  })
+
+  it('keeps ${VAR:default} placeholders in string values untouched', () => {
+    const raw = {
+      pool: { max: 1, min: 1, idleTimeoutMillis: 1, maxLifetimeSeconds: 1 },
+      databases: {
+        default: {
+          master: {
+            url: 'postgresql://localhost:5432/db',
+            username: 'u',
+            password: '${DB_PASSWORD:fallback}',
+          },
+          slaves: [],
+        },
+      },
+    }
+
+    const meta = parsePgConfig(raw)
+
+    expect(meta.databases.default.master.password).toBe('${DB_PASSWORD:fallback}')
   })
 
   it('throws a detailed error when a pool field is a non-numeric string', () => {

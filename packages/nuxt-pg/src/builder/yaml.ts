@@ -2,8 +2,8 @@ import { parse as parseYaml } from 'yaml'
 
 /**
  * Extract the `pg` namespace from a raw YAML string as a generic, untyped JSON
- * object. The runtime re-parses this from the manifest's JSON string and casts
- * it to `PgConfigMetadata`, so the builder intentionally avoids the typed shape.
+ * object. The result feeds `parsePgConfig`, which coerces it into the typed
+ * `PgConfigMetadata` baked into the manifest.
  *
  * Build-time only — this helper must never be imported from the runtime.
  */

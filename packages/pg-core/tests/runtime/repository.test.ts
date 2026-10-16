@@ -26,7 +26,13 @@ describe('PgRepositoryManager.createRepositories', () => {
   it('synchronizes the schemas and tables of every entity before building it', async () => {
     const statements: string[] = []
     const first = entityWith([column({ column: 'name', columnType: 'TEXT', default: '' })])
-    const second: PgEntityMetadata = { ...entityWith([]), table: 'other' }
+    // Building the repository of an entity also builds its UPDATE, which an
+    // entity without a single column cannot produce, so this one declares a
+    // column as well.
+    const second: PgEntityMetadata = {
+      ...entityWith([column({ column: 'name', columnType: 'TEXT', default: '' })]),
+      table: 'other',
+    }
 
     await new PgRepositoryManager(recordingDataSources(statements)).createRepositories([
       first,

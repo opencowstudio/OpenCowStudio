@@ -24,6 +24,8 @@
 // `PgEntityMetadata` object; this module never imports the builder layer.
 // ---------------------------------------------------------------------------
 
+import type { PgEntityMetadata } from '../shared/types.ts'
+
 /**
  * Data-access contract for a single entity: its row primitives.
  *
@@ -66,4 +68,15 @@ export interface StoreProxy<T> {
 
   /** Return the row whose key equals `id`, or `null` when it does not exist. */
   findById(id: string): Promise<T | null>
+
+  /**
+   * Return the resolved entity metadata the store was built for: the database,
+   * schema, table, key and columns its statements are derived from.
+   *
+   * The metadata is the store's identity — an implementation is bound to one
+   * entity for its whole life — so a caller that only holds the contract (the
+   * repository layer, a proxy stacked on another store) can read the mapping it
+   * translates against without being handed it a second time.
+   */
+  getMetadata(): PgEntityMetadata
 }

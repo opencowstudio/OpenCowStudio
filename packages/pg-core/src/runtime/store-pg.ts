@@ -85,6 +85,20 @@ export class PgStore<T> implements StoreProxy<T> {
   }
 
   /**
+   * Return the entity metadata the store was built for.
+   *
+   * The metadata is the one handed to the constructor and held by the store —
+   * the same object its four statements were derived from — so the caller reads
+   * the exact database, schema, table, key and column mapping the store works
+   * against rather than a copy of it.
+   *
+   * @returns The resolved entity metadata of this store.
+   */
+  getMetadata(): PgEntityMetadata {
+    return this.metadata
+  }
+
+  /**
    * Insert a new row and return it.
    *
    * The bound values follow the order {@link PgSqlTemplate.insertRow} declares:

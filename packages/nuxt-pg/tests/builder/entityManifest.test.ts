@@ -65,14 +65,14 @@ describe('registerPgEntityManifest', () => {
     expect(nuxt.options.alias[PG_ENTITIES_MANIFEST_ALIAS]).toBe(dst)
   })
 
-  it('serializes scanned entities into a formatted JSON string', async () => {
+  it('bakes the scanned entities as an array literal of metadata objects', async () => {
     writeEntity(dir!)
     await registerPgEntityManifest(makeNuxt())
 
     const opts = (addTemplate as ReturnType<typeof vi.fn>).mock.calls[0]![0]
     const contents = opts.getContents()
-    expect(contents).toContain('export const pgEntitiesJson')
-    // The embedded JSON string carries the entity's resolved metadata.
+    expect(contents).toContain('export const pgEntitiesMetadata')
+    // The array literal carries the entity's resolved metadata.
     expect(contents).toContain('dbName')
     expect(contents).toContain('columns')
     expect(contents).toContain('users')
@@ -83,10 +83,10 @@ describe('registerPgEntityManifest', () => {
     expect(contents).toContain('/server/entities/user.ts')
   })
 
-  it('writes an empty array string when no entities match', async () => {
+  it('bakes an empty array when no entities match', async () => {
     await registerPgEntityManifest(makeNuxt())
     const opts = (addTemplate as ReturnType<typeof vi.fn>).mock.calls[0]![0]
     const contents = opts.getContents()
-    expect(contents).toContain('"[]"')
+    expect(contents).toContain('export const pgEntitiesMetadata = []')
   })
 })

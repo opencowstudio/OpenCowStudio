@@ -32,10 +32,9 @@ function mockRuntime(pgConfig: PgConfigMetadata | null, entities: PgEntityMetada
     this.createRepositories = createRepositories
   })
 
-  // The config manifest already carries typed metadata, while the entity
-  // manifest still carries its payload as a JSON string.
+  // Both manifests already carry typed metadata.
   const pgConfigMetadata = pgConfig
-  const pgEntitiesJson = JSON.stringify(entities)
+  const pgEntitiesMetadata = entities
 
   vi.doMock('nitropack/runtime', () => ({
     defineNitroPlugin: (handler: () => void) => handler,
@@ -45,7 +44,7 @@ function mockRuntime(pgConfig: PgConfigMetadata | null, entities: PgEntityMetada
     PgRepositoryManager: PgRepositoryManagerSpy,
   }))
   vi.doMock('#pg-manifest', () => ({ pgConfigMetadata }))
-  vi.doMock('#pg-entities-manifest', () => ({ pgEntitiesJson }))
+  vi.doMock('#pg-entities-manifest', () => ({ pgEntitiesMetadata }))
 
   return { PgDataSourceManagerSpy, PgRepositoryManagerSpy, createRepositories, initializeSql }
 }
@@ -89,7 +88,7 @@ describe('bootstrap nitro plugin', () => {
     expect(initializeSql).toHaveBeenCalledTimes(1)
 
     // The repository manager is built from the datasource manager and seeded
-    // with the entities parsed from the entity manifest (none here).
+    // with the entities imported from the entity manifest (none here).
     expect(PgRepositoryManagerSpy).toHaveBeenCalledTimes(1)
     expect(PgRepositoryManagerSpy.mock.calls[0]![0]).toBe(PgDataSourceManagerSpy.mock.instances[0])
     expect(createRepositories).toHaveBeenCalledWith([])

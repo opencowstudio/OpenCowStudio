@@ -22,7 +22,7 @@ export async function setupModule(options: ModuleOptions, nuxt: Nuxt): Promise<v
 
   // Scan the entity source files, resolve each entity into a PgEntityMetadata,
   // and bake the collection into a server-only manifest at build time. The
-  // runtime can later parse the JSON string back into entity metadata.
+  // runtime imports the typed entity metadata directly.
   //
   // The scanned locations are fixed by the scanner itself: every entity lives
   // in an `entities/` directory below the Nuxt root.

@@ -14,11 +14,11 @@ application.
 - At build time it scans the entity source files (`**/entities/**/*.ts` relative
   to the Nuxt root), resolves every discovered entity class into a
   `PgEntityMetadata` (validated, defaulted and normalised), logs the total number
-  of scanned entities and each resolved table, and bakes the collection into a
-  **server-only** manifest (`pg.entities.manifest.ts`) as a formatted JSON
-  string. The runtime can later parse that string back into entity metadata.
-- At runtime a Nitro plugin imports that typed `PgConfigMetadata` directly and,
-  when a configuration is present, instantiates a `PgDataSourceManager` from
+  of scanned entities and each resolved table, and bakes the typed collection
+  into a **server-only** manifest (`pg.entities.manifest.ts`).
+- At runtime a Nitro plugin imports both typed manifests directly
+  (`PgConfigMetadata` and `PgEntityMetadata[]`) and, when a configuration is
+  present, instantiates a `PgDataSourceManager` from
   `@opencowstudio/pg-core`.
 
   Because the parsing happens at build time, a value that cannot be coerced

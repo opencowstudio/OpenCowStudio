@@ -1,10 +1,10 @@
 import { consola } from 'consola'
 import { defineNitroPlugin } from 'nitropack/runtime'
 import { PgDataSourceManager, PgRepositoryManager } from '@opencowstudio/pg-core'
-import type { PgConfigMetadata, PgEntityMetadata } from '@opencowstudio/pg-core'
+import type { PgConfigMetadata } from '@opencowstudio/pg-core'
 import { resolvePgConfigPlaceholders } from '../utils/env-placeholder'
 import { pgConfigMetadata } from '#pg-manifest'
-import { pgEntitiesJson } from '#pg-entities-manifest'
+import { pgEntitiesMetadata } from '#pg-entities-manifest'
 
 const logger = consola.withTag('nuxt-pg')
 
@@ -35,20 +35,11 @@ export default defineNitroPlugin(async () => {
   // on every datasource before the repositories are built.
   await manager.initializeSql()
 
-  // The entity manifest carries the scanned entity metadata as a JSON string.
-  // A malformed payload must not abort startup, so it is logged and skipped.
-  let entities: PgEntityMetadata[]
-  try {
-    entities = JSON.parse(pgEntitiesJson) as PgEntityMetadata[]
-  } catch (err) {
-    logger.error('Failed to parse pg entities manifest JSON string:', err)
-    return
-  }
-
-  // The repository manager resolves each entity's datasource through the
-  // manager, so it is built once the datasources exist. Awaited so the schema
-  // bootstrap finishes (and its failures surface) before startup continues.
+  // The entity manifest carries the scanned entity metadata directly. The
+  // repository manager resolves each entity's datasource through the manager,
+  // so it is built once the datasources exist. Awaited so the schema bootstrap
+  // finishes (and its failures surface) before startup continues.
   const repositories = new PgRepositoryManager(manager)
-  await repositories.createRepositories(entities)
-  logger.success(`PgRepositoryManager initialized (entities: ${entities.length})`)
+  await repositories.createRepositories(pgEntitiesMetadata)
+  logger.success(`PgRepositoryManager initialized (entities: ${pgEntitiesMetadata.length})`)
 })

@@ -53,9 +53,10 @@ describe('registerPgManifest', () => {
     const opts = (addTemplate as ReturnType<typeof vi.fn>).mock.calls[0]![0]
     const contents = opts.getContents()
     expect(contents).toContain('export const pgConfigMetadata')
-    // The metadata is embedded as a plain object literal, not a JSON string.
-    expect(contents).toContain('postgresql://localhost:5432/opencowstudio_dev')
-    expect(contents).not.toContain('"pool": "')
+    // The metadata is embedded as a TS object literal, not a JSON string.
+    expect(contents).toContain('  pool: {')
+    expect(contents).toContain("url: 'postgresql://localhost:5432/opencowstudio_dev',")
+    expect(contents).not.toContain('"pool"')
   })
 
   it('bakes null when no config file is present', () => {

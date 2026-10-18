@@ -31,13 +31,14 @@ describe('PgRepositoryManager.createRepositories', () => {
     // column as well.
     const second: PgEntityMetadata = {
       ...entityWith([column({ column: 'name', columnType: 'TEXT', default: '' })]),
+      className: 'Other',
       table: 'other',
     }
 
-    await new PgRepositoryManager(recordingDataSources(statements)).createRepositories([
-      first,
-      second,
-    ])
+    await new PgRepositoryManager(recordingDataSources(statements)).createRepositories(
+      [first, second],
+      { Sample: class Sample {}, Other: class Other {} },
+    )
 
     expect(statements).toEqual([
       // One script per database: both entities live in `public`, so the schema
@@ -49,5 +50,13 @@ describe('PgRepositoryManager.createRepositories', () => {
       PgSqlTemplate.INSERT_SQL_EXECUTION_SCRIPT,
       PgSqlTemplate.createTable(second),
     ])
+  })
+
+  it('fails when an entity has no class in the entity type map', async () => {
+    const entity = entityWith([column({ column: 'name', columnType: 'TEXT', default: '' })])
+
+    await expect(
+      new PgRepositoryManager(recordingDataSources([])).createRepositories([entity], {}),
+    ).rejects.toThrow('No entity class found for "Sample" (table "sample") in the entity type map.')
   })
 })

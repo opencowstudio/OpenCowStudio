@@ -10,7 +10,12 @@ vi.mock('@nuxt/kit', () => ({
 }))
 
 import { addTemplate } from '@nuxt/kit'
-import { registerPgEntityManifest, PG_ENTITIES_MANIFEST_ALIAS } from '../../src/builder/manifest'
+import type { PgEntityMetadata } from '@opencowstudio/pg-core'
+import {
+  collectPgEntityImports,
+  registerPgEntityManifest,
+  PG_ENTITIES_MANIFEST_ALIAS,
+} from '../../src/builder/manifest'
 
 // Resolve to the package root (test file lives in tests/builder, so three
 // levels up) so the temp root scanned by each test shares the package's
@@ -88,5 +93,44 @@ describe('registerPgEntityManifest', () => {
     const opts = (addTemplate as ReturnType<typeof vi.fn>).mock.calls[0]![0]
     const contents = opts.getContents()
     expect(contents).toContain('export const pgEntitiesMetadata = []')
+    // Nothing to import, so the type map stays empty as well.
+    expect(contents).not.toContain('import {')
+    expect(contents).toContain('export const pgEntitiesTypeMap = {}')
+  })
+
+  it('imports the entity classes and binds them in the type map', async () => {
+    writeEntity(dir!)
+    await registerPgEntityManifest(makeNuxt())
+
+    const opts = (addTemplate as ReturnType<typeof vi.fn>).mock.calls[0]![0]
+    const contents = opts.getContents()
+    // The class is imported from the module recorded in the metadata, addressed
+    // through the Nuxt root alias since the path is root-relative.
+    expect(contents).toContain("import { User } from '~~/server/entities/user.ts'")
+    expect(contents).toContain('export const pgEntitiesTypeMap = {\n  User: User,\n}')
+  })
+})
+
+describe('collectPgEntityImports', () => {
+  /** Build the minimal metadata the grouping logic reads. */
+  function entity(className: string, modulePath: string): PgEntityMetadata {
+    return { className, modulePath } as PgEntityMetadata
+  }
+
+  it('groups the class names declared in the same module', () => {
+    const imports = collectPgEntityImports([
+      entity('UserAccount', '/server/entities/user-account.ts'),
+      entity('User', '/server/entities/user-account.ts'),
+      entity('Post', '/server/entities/post.ts'),
+    ])
+
+    expect(imports).toEqual([
+      { modulePath: '/server/entities/user-account.ts', classNames: ['UserAccount', 'User'] },
+      { modulePath: '/server/entities/post.ts', classNames: ['Post'] },
+    ])
+  })
+
+  it('returns an empty collection when there are no entities', () => {
+    expect(collectPgEntityImports([])).toEqual([])
   })
 })

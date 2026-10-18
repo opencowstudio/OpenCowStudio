@@ -4,7 +4,7 @@ import { PgDataSourceManager, PgRepositoryManager } from '@opencowstudio/pg-core
 import type { PgConfigMetadata } from '@opencowstudio/pg-core'
 import { resolvePgConfigPlaceholders } from '../utils/env-placeholder'
 import { pgConfigMetadata } from '#pg-manifest'
-import { pgEntitiesMetadata } from '#pg-entities-manifest'
+import { pgEntitiesMetadata, pgEntitiesTypeMap } from '#pg-entities-manifest'
 
 const logger = consola.withTag('nuxt-pg')
 
@@ -35,11 +35,13 @@ export default defineNitroPlugin(async () => {
   // on every datasource before the repositories are built.
   await manager.initializeSql()
 
-  // The entity manifest carries the scanned entity metadata directly. The
-  // repository manager resolves each entity's datasource through the manager,
-  // so it is built once the datasources exist. Awaited so the schema bootstrap
-  // finishes (and its failures surface) before startup continues.
+  // The entity manifest carries the scanned entity metadata directly, plus the
+  // entity classes keyed by class name — the registry keys the repositories are
+  // stored under. The repository manager resolves each entity's datasource
+  // through the manager, so it is built once the datasources exist. Awaited so
+  // the schema bootstrap finishes (and its failures surface) before startup
+  // continues.
   const repositories = new PgRepositoryManager(manager)
-  await repositories.createRepositories(pgEntitiesMetadata)
+  await repositories.createRepositories(pgEntitiesMetadata, pgEntitiesTypeMap)
   logger.success(`PgRepositoryManager initialized (entities: ${pgEntitiesMetadata.length})`)
 })

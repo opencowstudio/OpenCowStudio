@@ -8,8 +8,8 @@
 // collection into the repository registry.
 //
 // The registry itself is the module-level `repositories` map, keyed by the
-// entity's `<dbName>.<schema>.<table>` (see `repositoryKey`), so a repository
-// outlives the manager that built it and is shared by every caller.
+// entity class (see `repositoryKey`), so a repository outlives the manager that
+// built it and is shared by every caller.
 //
 // Bootstrapping the registry also means bootstrapping the storage it needs, but
 // the DDL is not this module's concern: `createRepositories` drives the
@@ -47,6 +47,18 @@ export interface PgEntityRepository<T, K extends string = string> {
   findById(id: K): Promise<T | null>
 }
 
+/**
+ * Constructor of an entity class: the value bound to a class name in the
+ * runtime `pgEntitiesTypeMap` of the generated entity manifest.
+ *
+ * Only the class identity matters here — it is the registry key — so the
+ * signature accepts any constructable class and never instantiates one.
+ */
+export type PgEntityClass = abstract new (...args: never[]) => unknown
+
+/** Entity classes keyed by their class name (`pgEntitiesTypeMap`). */
+export type PgEntityTypeMap = Record<string, PgEntityClass>
+
 // ---------------------------------------------------------------------------
 // PgRepositoryManager — the repository registry
 //
@@ -64,17 +76,30 @@ export interface PgEntityRepository<T, K extends string = string> {
  * not need the manager that registered it. Registering an existing key replaces
  * the previous handle.
  */
-const repositories = new Map<string, PgEntityRepository<unknown>>()
+const repositories = new Map<PgEntityClass, PgEntityRepository<unknown>>()
 
 /**
- * Build the registry key of an entity: `<dbName>.<schema>.<table>`.
+ * Resolve the registry key of an entity: the class bound to its `className` in
+ * the runtime entity type map.
  *
- * All three parts take part in the key, so two entities that share a table name
- * stay apart when they live in another schema or another database, while the
- * same entity always produces the same key.
+ * Keying by the class itself — instead of a `<dbName>.<schema>.<table>` string —
+ * lets a caller look a repository up with the class it already holds.
+ *
+ * @param entity The entity metadata whose class is resolved.
+ * @param entityTypes The entity classes keyed by class name (`pgEntitiesTypeMap`).
+ * @throws When the type map carries no class for `entity.className`, i.e. the
+ *         type map and the metadata do not come from the same scan.
  */
-function repositoryKey(entity: PgEntityMetadata): string {
-  return [entity.dbName, entity.schema, entity.table].join('.')
+function repositoryKey(entity: PgEntityMetadata, entityTypes: PgEntityTypeMap): PgEntityClass {
+  const entityClass = entityTypes[entity.className]
+
+  if (!entityClass) {
+    throw new Error(
+      `No entity class found for "${entity.className}" (table "${entity.table}") in the entity type map.`,
+    )
+  }
+
+  return entityClass
 }
 
 /**
@@ -135,13 +160,19 @@ export class PgRepositoryManager {
    *
    * Repository creation follows, once every table is in place: each entity's
    * repository (see {@link PgRepositoryManager.createRepository}) is registered
-   * in the module-level registry under its `<dbName>.<schema>.<table>` key (see
-   * `repositoryKey`), so it is shared with, and reachable by, every caller
-   * afterwards. An entity already registered is replaced by its new handle.
+   * in the module-level registry under the entity class resolved from
+   * `entityTypes` (see `repositoryKey`), so it is shared with, and reachable
+   * by, every caller afterwards. An entity already registered is replaced by
+   * its new handle.
    *
    * @param entities The resolved entity metadata to build repositories from.
+   * @param entityTypes The entity classes keyed by class name, as exposed by the
+   *   generated manifest's `pgEntitiesTypeMap`.
    */
-  async createRepositories(entities: PgEntityMetadata[]): Promise<void> {
+  async createRepositories(
+    entities: PgEntityMetadata[],
+    entityTypes: PgEntityTypeMap,
+  ): Promise<void> {
     const schemaSync = new SchemaSync(this.dataSources)
     await schemaSync.ensureSchemas(entities)
 
@@ -149,8 +180,12 @@ export class PgRepositoryManager {
       await schemaSync.ensureTable(entity)
     }
 
-    for (const entity of entities) {
-      repositories.set(repositoryKey(entity), this.createRepository(entity))
+    // Resolve every key before registering, so a missing class fails the whole
+    // bootstrap instead of leaving the registry half populated.
+    const keys = entities.map(entity => repositoryKey(entity, entityTypes))
+
+    for (const [index, entity] of entities.entries()) {
+      repositories.set(keys[index]!, this.createRepository(entity))
     }
   }
 }

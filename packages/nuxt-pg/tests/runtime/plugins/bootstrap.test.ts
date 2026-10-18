@@ -11,7 +11,11 @@ const bootstrapPath = fileURLToPath(
   new URL('../../../src/runtime/plugins/bootstrap', import.meta.url),
 )
 
-function mockRuntime(pgConfig: PgConfigMetadata | null, entities: PgEntityMetadata[] = []) {
+function mockRuntime(
+  pgConfig: PgConfigMetadata | null,
+  entities: PgEntityMetadata[] = [],
+  entityTypes: Record<string, unknown> = {},
+) {
   // Constructable spy standing in for the real `PgDataSourceManager`. It records
   // the `initializeSql` call the plugin makes after construction.
   const initializeSql = vi.fn()
@@ -24,10 +28,10 @@ function mockRuntime(pgConfig: PgConfigMetadata | null, entities: PgEntityMetada
   })
 
   // Constructable spy standing in for the real `PgRepositoryManager`. It records
-  // the entities handed to `createRepositories` so the call can be asserted.
+  // the arguments handed to `createRepositories` so the call can be asserted.
   const createRepositories = vi.fn()
   const PgRepositoryManagerSpy = vi.fn().mockImplementation(function (this: {
-    createRepositories: (entities: PgEntityMetadata[]) => void
+    createRepositories: (entities: PgEntityMetadata[], typeMap: Record<string, unknown>) => void
   }) {
     this.createRepositories = createRepositories
   })
@@ -35,6 +39,7 @@ function mockRuntime(pgConfig: PgConfigMetadata | null, entities: PgEntityMetada
   // Both manifests already carry typed metadata.
   const pgConfigMetadata = pgConfig
   const pgEntitiesMetadata = entities
+  const pgEntitiesTypeMap = entityTypes
 
   vi.doMock('nitropack/runtime', () => ({
     defineNitroPlugin: (handler: () => void) => handler,
@@ -44,7 +49,7 @@ function mockRuntime(pgConfig: PgConfigMetadata | null, entities: PgEntityMetada
     PgRepositoryManager: PgRepositoryManagerSpy,
   }))
   vi.doMock('#pg-manifest', () => ({ pgConfigMetadata }))
-  vi.doMock('#pg-entities-manifest', () => ({ pgEntitiesMetadata }))
+  vi.doMock('#pg-entities-manifest', () => ({ pgEntitiesMetadata, pgEntitiesTypeMap }))
 
   return { PgDataSourceManagerSpy, PgRepositoryManagerSpy, createRepositories, initializeSql }
 }
@@ -88,10 +93,32 @@ describe('bootstrap nitro plugin', () => {
     expect(initializeSql).toHaveBeenCalledTimes(1)
 
     // The repository manager is built from the datasource manager and seeded
-    // with the entities imported from the entity manifest (none here).
+    // with the entities and the entity class map from the entity manifest.
     expect(PgRepositoryManagerSpy).toHaveBeenCalledTimes(1)
     expect(PgRepositoryManagerSpy.mock.calls[0]![0]).toBe(PgDataSourceManagerSpy.mock.instances[0])
-    expect(createRepositories).toHaveBeenCalledWith([])
+    expect(createRepositories).toHaveBeenCalledWith([], {})
+  })
+
+  it('hands the entity metadata and the entity type map to createRepositories', async () => {
+    const cfg: PgConfigMetadata = {
+      pool: { max: 1, min: 1, idleTimeoutMillis: 1, maxLifetimeSeconds: 1 },
+      databases: {
+        default: {
+          master: { url: 'postgresql://localhost:5432/db', username: 'u', password: 'p' },
+          slaves: [],
+        },
+      },
+    }
+    const entities = [{ className: 'User' } as PgEntityMetadata]
+    const entityTypes = { User: class User {} }
+
+    vi.resetModules()
+    const { createRepositories } = mockRuntime(cfg, entities, entityTypes)
+    const mod = await import(bootstrapPath)
+    const handler = mod.default as () => void | Promise<void>
+    await handler()
+
+    expect(createRepositories).toHaveBeenCalledWith(entities, entityTypes)
   })
 
   it('resolves ${VAR:default} placeholders from the environment', async () => {

@@ -15,4 +15,11 @@ declare module '#pg-entities-manifest' {
    * entities were found.
    */
   export const pgEntitiesMetadata: import('@opencowstudio/pg-core').PgEntityMetadata[]
+
+  /**
+   * The scanned entity classes, keyed by their class name. Every value is the
+   * class imported from the module that declares it, so the concrete class is
+   * only known at build time.
+   */
+  export const pgEntitiesTypeMap: import('@opencowstudio/pg-core').PgEntityTypeMap
 }

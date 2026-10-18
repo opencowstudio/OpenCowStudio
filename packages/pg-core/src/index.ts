@@ -44,8 +44,9 @@ export type {
 
 // === runtime ===============================================================
 
-// Entity operation contract (CRUD).
-export type { PgEntityRepository } from './runtime/repository'
+// Entity operation contract (CRUD), plus the class/type-map shapes the
+// repository registry is keyed by.
+export type { PgEntityClass, PgEntityRepository, PgEntityTypeMap } from './runtime/repository'
 
 // Repository registry (one repository per scanned entity).
 export { PgRepositoryManager } from './runtime/repository'

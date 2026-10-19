@@ -363,7 +363,7 @@ export class PgSqlTemplate {
    */
   static insertRow(metadata: PgEntityMetadata): string {
     const tableRef = qualifyTable(metadata.schema, metadata.table)
-    const columns = [metadata.key.column, ...metadata.columns.map(column => column.column)]
+    const columns = PgSqlTemplate.insertColumns(metadata)
     const placeholders = columns.map((_, index) => `$${index + 1}`)
 
     return [
@@ -371,6 +371,44 @@ export class PgSqlTemplate {
       columns.map(column => `  ${quoteIdentifier(column)}`).join(',\n'),
       `) VALUES (${placeholders.join(', ')});`,
     ].join('\n')
+  }
+
+  /**
+   * Collect the values {@link PgSqlTemplate.insertRow} binds for a record.
+   *
+   * The values are read from `row` in exactly the order the statement binds
+   * them: the key column first, then the declared columns in declaration order —
+   * the same order {@link PgSqlTemplate.insertColumns} returns, so the statement
+   * and its parameter list are derived from one definition and cannot drift
+   * apart.
+   *
+   * Each value is looked up by PostgreSQL column name — the key through
+   * `PgKeyMetadata.column`, the columns through `PgColumnMetadata.column` — and
+   * a column `row` does not carry is returned as `null`, so the result always
+   * has exactly one entry per placeholder.
+   *
+   * @param metadata The resolved entity metadata to read the column order from.
+   * @param row      The record whose values are collected.
+   * @returns One value per `insertRow` placeholder, in parameter order.
+   */
+  static insertRowValues<T>(metadata: PgEntityMetadata, row: T): unknown[] {
+    const fields = row as Record<string, unknown>
+    return PgSqlTemplate.insertColumns(metadata).map(column => fields[column] ?? null)
+  }
+
+  /**
+   * Return the column names an `INSERT` writes, in parameter order.
+   *
+   * The key column comes first, then the declared columns in declaration order —
+   * the same order {@link PgSqlTemplate.createTable} emits its column
+   * definitions in. Shared by {@link PgSqlTemplate.insertRow} (the column list)
+   * and {@link PgSqlTemplate.insertRowValues} (the value list), so both stay
+   * aligned by construction.
+   *
+   * @param metadata The resolved entity metadata to read the column order from.
+   */
+  private static insertColumns(metadata: PgEntityMetadata): string[] {
+    return [metadata.key.column, ...metadata.columns.map(column => column.column)]
   }
 
   /**
@@ -397,7 +435,7 @@ export class PgSqlTemplate {
    *         would carry an empty assignment list.
    */
   static updateRow(metadata: PgEntityMetadata): string {
-    const columns = metadata.columns.map(column => column.column)
+    const columns = PgSqlTemplate.updateColumns(metadata)
     if (columns.length === 0) {
       throw new Error(
         `Cannot build an UPDATE for "${metadata.schema}"."${metadata.table}": ` +
@@ -413,6 +451,46 @@ export class PgSqlTemplate {
       assignments.join(',\n'),
       `WHERE ${quoteIdentifier(metadata.key.column)} = $${columns.length + 1};`,
     ].join('\n')
+  }
+
+  /**
+   * Collect the values {@link PgSqlTemplate.updateRow} binds for a record.
+   *
+   * The values are read from `row` in exactly the order the statement binds
+   * them: the declared columns in declaration order first, then the key value
+   * last — the reverse of {@link PgSqlTemplate.insertRowValues}, where the key
+   * comes first. Both lists derive from {@link PgSqlTemplate.updateColumns}, so
+   * the statement and its parameter list cannot drift apart.
+   *
+   * Each value is looked up by PostgreSQL column name — the columns through
+   * `PgColumnMetadata.column`, the key through `PgKeyMetadata.column` — and a
+   * column `row` does not carry is returned as `null`, so the result always has
+   * exactly one entry per placeholder.
+   *
+   * @param metadata The resolved entity metadata to read the column order from.
+   * @param row      The record whose values are collected.
+   * @returns One value per `updateRow` placeholder, in parameter order.
+   */
+  static updateRowValues<T>(metadata: PgEntityMetadata, row: T): unknown[] {
+    const fields = row as Record<string, unknown>
+    const columns = PgSqlTemplate.updateColumns(metadata)
+
+    return [...columns.map(column => fields[column] ?? null), fields[metadata.key.column] ?? null]
+  }
+
+  /**
+   * Return the column names an `UPDATE` assigns, in parameter order.
+   *
+   * The declared columns come in declaration order; the key column is not among
+   * them — it addresses the row in the `WHERE` clause instead. Shared by
+   * {@link PgSqlTemplate.updateRow} (the assignment list) and
+   * {@link PgSqlTemplate.updateRowValues} (the value list), so both stay aligned
+   * by construction.
+   *
+   * @param metadata The resolved entity metadata to read the column order from.
+   */
+  private static updateColumns(metadata: PgEntityMetadata): string[] {
+    return metadata.columns.map(column => column.column)
   }
 
   /**

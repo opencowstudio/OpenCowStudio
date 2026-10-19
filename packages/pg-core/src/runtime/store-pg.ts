@@ -101,12 +101,12 @@ export class PgStore<T> implements StoreProxy<T> {
   /**
    * Insert a new row and return it.
    *
-   * The bound values follow the order {@link PgSqlTemplate.insertRow} declares:
-   * the key value first, then the declared columns in declaration order. Each
-   * value is read from `row` by PostgreSQL column name — the key through
-   * {@link PgKeyMetadata.column}, the columns through
-   * {@link PgColumnMetadata.column} — and a column `row` does not carry is bound
-   * as `null`.
+   * The bound values come from {@link PgSqlTemplate.insertRowValues}, which
+   * reads them from `row` in the order the statement binds them — the key value
+   * first, then the declared columns in declaration order — by PostgreSQL column
+   * name, binding `null` for a column `row` does not carry. Statement and
+   * parameters are therefore derived from the same metadata definition, so they
+   * cannot drift apart.
    *
    * The statement carries no `RETURNING` clause, so nothing is read back from
    * the database: the record that was written is the one `row` described, and it
@@ -116,11 +116,7 @@ export class PgStore<T> implements StoreProxy<T> {
    * @returns The inserted entity.
    */
   async insert(row: T): Promise<T> {
-    const fields = row as Record<string, unknown>
-    const values = [
-      fields[this.metadata.key.column] ?? null,
-      ...this.metadata.columns.map(({ column }) => fields[column] ?? null),
-    ]
+    const values = PgSqlTemplate.insertRowValues(this.metadata, row)
 
     await this.dataSource.query(this.insertSql, values)
     return row
@@ -129,13 +125,13 @@ export class PgStore<T> implements StoreProxy<T> {
   /**
    * Replace the row whose key equals the key carried by `row`, and return it.
    *
-   * The bound values follow the order {@link PgSqlTemplate.updateRow} declares:
-   * the declared columns in declaration order first, then the key value last —
-   * the reverse of {@link PgStore.insert}, where the key comes first. Each value
-   * is read from `row` by PostgreSQL column name — the columns through
-   * {@link PgColumnMetadata.column}, the key through
-   * {@link PgKeyMetadata.column} — and a column `row` does not carry is bound as
-   * `null`.
+   * The bound values come from {@link PgSqlTemplate.updateRowValues}, which
+   * reads them from `row` in the order the statement binds them: the declared
+   * columns in declaration order first, then the key value last — the reverse of
+   * {@link PgStore.insert}, where the key comes first. Values are read by
+   * PostgreSQL column name, binding `null` for a column `row` does not carry.
+   * Statement and parameters are therefore derived from the same metadata
+   * definition, so they cannot drift apart.
    *
    * The statement carries no `RETURNING` clause, so nothing is read back from
    * the database: the record that was written is the one `row` described, and it
@@ -145,11 +141,7 @@ export class PgStore<T> implements StoreProxy<T> {
    * @returns The replaced entity.
    */
   async update(row: T): Promise<T> {
-    const fields = row as Record<string, unknown>
-    const values = [
-      ...this.metadata.columns.map(({ column }) => fields[column] ?? null),
-      fields[this.metadata.key.column] ?? null,
-    ]
+    const values = PgSqlTemplate.updateRowValues(this.metadata, row)
 
     await this.dataSource.query(this.updateSql, values)
     return row

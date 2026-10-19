@@ -99,6 +99,25 @@ describe('PgSqlTemplate', () => {
     expect(script).not.toContain(';;')
   })
 
+  it('should collect the insert values in parameter order', () => {
+    const row = { id: 'u1', name: 'Ada', age: 36 }
+
+    // Key first, then the declared columns — the order `insertRow` binds.
+    expect(PgSqlTemplate.insertRowValues(ENTITY, row)).toEqual(['u1', 'Ada', 36])
+  })
+
+  it('should bind null for a column the row does not carry', () => {
+    expect(PgSqlTemplate.insertRowValues(ENTITY, { id: 'u1' })).toEqual(['u1', null, null])
+  })
+
+  it('should collect the update values in parameter order', () => {
+    const row = { id: 'u1', name: 'Ada', age: 36 }
+
+    // Declared columns first, then the key — the order `updateRow` binds.
+    expect(PgSqlTemplate.updateRowValues(ENTITY, row)).toEqual(['Ada', 36, 'u1'])
+    expect(PgSqlTemplate.updateRowValues(ENTITY, { id: 'u1' })).toEqual([null, null, 'u1'])
+  })
+
   it('should default createSchema to the default schema', () => {
     expect(PgSqlTemplate.createSchema()).toBe(PgSqlTemplate.createSchema(DEFAULT_SCHEMA))
     expect(PgSqlTemplate.createSchema()).toBe('CREATE SCHEMA IF NOT EXISTS "public";')

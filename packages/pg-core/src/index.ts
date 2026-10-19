@@ -52,6 +52,38 @@ export type { PgEntityClass, PgEntityRepository, PgEntityTypeMap } from './runti
 // service that resolves a repository from its entity class.
 export { PgRepositories, PgRepositoryManager } from './runtime/repository'
 
+// Filter conditions (`WHERE` terms): equality, set membership, range, string
+// matching and boolean grouping, plus the factory functions that create them.
+export type {
+  PgBoolFilter,
+  PgBoolFilterInput,
+  PgEqualsFilter,
+  PgFilterCondition,
+  PgInFilter,
+  PgMatchFilter,
+  PgRangeFilter,
+  PgRangeInput,
+  PgRangeValue,
+} from './runtime/filter'
+export {
+  BoolFilterBuilder,
+  EqualsFilterBuilder,
+  FilterBuilder,
+  InFilterBuilder,
+  MatchFilterBuilder,
+  RangeFilterBuilder,
+} from './runtime/filter'
+
+// Sort conditions (`ORDER BY` terms): a single-column sort and a multi-column
+// sort, plus the factory functions that create them.
+export type {
+  PgColumnSort,
+  PgMultiColumnSort,
+  PgSortCondition,
+  PgSortOrder,
+} from './runtime/sort'
+export { ColumnSortBuilder, MultiColumnSortBuilder, SortBuilder } from './runtime/sort'
+
 // Column introspection types (catalog rows + the divergences detected against
 // the entity metadata), owned by the storage bootstrap.
 export type {

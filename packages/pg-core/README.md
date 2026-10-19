@@ -49,6 +49,9 @@ out of the runtime bundle. These rules are enforced by
   `PgEntityRepository<T, K>` with the `insert` / `update` / `delete` /
   `findById` surface, where `K` is the primary-key value type and the key
   property is `id`.
+- The repository registry (`runtime/repository.ts`): `PgRepositoryManager` builds
+  and registers one repository per scanned entity, and `PgRepositories.get`
+  resolves a registered repository from its entity class.
 - Startup storage synchronization (`runtime/schema-sync.ts`): the `SchemaSync`
   service ensures the schemas, tables, columns and indexes the entities declare
   exist and match, and records every script it executes in

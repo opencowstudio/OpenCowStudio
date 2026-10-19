@@ -48,8 +48,9 @@ export type {
 // repository registry is keyed by.
 export type { PgEntityClass, PgEntityRepository, PgEntityTypeMap } from './runtime/repository'
 
-// Repository registry (one repository per scanned entity).
-export { PgRepositoryManager } from './runtime/repository'
+// Repository registry (one repository per scanned entity), plus the read-side
+// service that resolves a repository from its entity class.
+export { PgRepositories, PgRepositoryManager } from './runtime/repository'
 
 // Column introspection types (catalog rows + the divergences detected against
 // the entity metadata), owned by the storage bootstrap.

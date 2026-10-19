@@ -36,6 +36,12 @@ function mockRuntime(
     this.createRepositories = createRepositories
   })
 
+  // Constructable spy standing in for the injected repository service; the
+  // plugin instantiates it once the repositories are registered.
+  const PgRepositoriesSpy = vi.fn().mockImplementation(function (this: object) {
+    // Stateless service: construction is all the plugin does.
+  })
+
   // Both manifests already carry typed metadata.
   const pgConfigMetadata = pgConfig
   const pgEntitiesMetadata = entities
@@ -46,12 +52,19 @@ function mockRuntime(
   }))
   vi.doMock('@opencowstudio/pg-core', () => ({
     PgDataSourceManager: PgDataSourceManagerSpy,
+    PgRepositories: PgRepositoriesSpy,
     PgRepositoryManager: PgRepositoryManagerSpy,
   }))
   vi.doMock('#pg-manifest', () => ({ pgConfigMetadata }))
   vi.doMock('#pg-entities-manifest', () => ({ pgEntitiesMetadata, pgEntitiesTypeMap }))
 
-  return { PgDataSourceManagerSpy, PgRepositoryManagerSpy, createRepositories, initializeSql }
+  return {
+    PgDataSourceManagerSpy,
+    PgRepositoriesSpy,
+    PgRepositoryManagerSpy,
+    createRepositories,
+    initializeSql,
+  }
 }
 
 describe('bootstrap nitro plugin', () => {
@@ -65,6 +78,10 @@ describe('bootstrap nitro plugin', () => {
     const { PgDataSourceManager } = await import('@opencowstudio/pg-core')
     expect(PgDataSourceManager).toBe(PgDataSourceManagerSpy)
     expect(PgDataSourceManagerSpy).not.toHaveBeenCalled()
+
+    // Nothing was bootstrapped, so no service was injected.
+    const { usePgRepositories } = await import('../../../src/runtime/utils/repositories')
+    expect(() => usePgRepositories()).toThrow()
   })
 
   it('initializes a PgDataSourceManager when pg config is present', async () => {
@@ -78,8 +95,13 @@ describe('bootstrap nitro plugin', () => {
       },
     }
     vi.resetModules()
-    const { PgDataSourceManagerSpy, PgRepositoryManagerSpy, createRepositories, initializeSql } =
-      mockRuntime(cfg)
+    const {
+      PgDataSourceManagerSpy,
+      PgRepositoriesSpy,
+      PgRepositoryManagerSpy,
+      createRepositories,
+      initializeSql,
+    } = mockRuntime(cfg)
     const mod = await import(bootstrapPath)
     const handler = mod.default as () => void | Promise<void>
     await handler()
@@ -97,6 +119,11 @@ describe('bootstrap nitro plugin', () => {
     expect(PgRepositoryManagerSpy).toHaveBeenCalledTimes(1)
     expect(PgRepositoryManagerSpy.mock.calls[0]![0]).toBe(PgDataSourceManagerSpy.mock.instances[0])
     expect(createRepositories).toHaveBeenCalledWith([], {})
+
+    // The repository service is injected once the repositories are registered.
+    expect(PgRepositoriesSpy).toHaveBeenCalledTimes(1)
+    const { usePgRepositories } = await import('../../../src/runtime/utils/repositories')
+    expect(usePgRepositories()).toBe(PgRepositoriesSpy.mock.instances[0])
   })
 
   it('hands the entity metadata and the entity type map to createRepositories', async () => {

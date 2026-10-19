@@ -1,8 +1,9 @@
 import { consola } from 'consola'
 import { defineNitroPlugin } from 'nitropack/runtime'
-import { PgDataSourceManager, PgRepositoryManager } from '@opencowstudio/pg-core'
+import { PgDataSourceManager, PgRepositories, PgRepositoryManager } from '@opencowstudio/pg-core'
 import type { PgConfigMetadata } from '@opencowstudio/pg-core'
 import { resolvePgConfigPlaceholders } from '../utils/env-placeholder'
+import { setPgRepositories } from '../utils/repositories'
 import { pgConfigMetadata } from '#pg-manifest'
 import { pgEntitiesMetadata, pgEntitiesTypeMap } from '#pg-entities-manifest'
 
@@ -41,7 +42,13 @@ export default defineNitroPlugin(async () => {
   // through the manager, so it is built once the datasources exist. Awaited so
   // the schema bootstrap finishes (and its failures surface) before startup
   // continues.
-  const repositories = new PgRepositoryManager(manager)
-  await repositories.createRepositories(pgEntitiesMetadata, pgEntitiesTypeMap)
+  const repositoryManager = new PgRepositoryManager(manager)
+  await repositoryManager.createRepositories(pgEntitiesMetadata, pgEntitiesTypeMap)
   logger.success(`PgRepositoryManager initialized (entities: ${pgEntitiesMetadata.length})`)
+
+  // Inject the read-side service the server code consumes: it resolves a
+  // repository from its entity class, and is reachable through
+  // `usePgRepositories()` once every repository above is registered.
+  setPgRepositories(new PgRepositories())
+  logger.success('Pg repository service injected')
 })

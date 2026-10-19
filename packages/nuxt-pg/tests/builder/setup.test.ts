@@ -2,10 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Nuxt } from 'nuxt/schema'
 
 // Mock `@nuxt/kit` so the build-time helpers (`createResolver`,
-// `addServerPlugin`) don't require a real Nuxt instance.
+// `addServerPlugin`, `addServerImports`) don't require a real Nuxt instance.
 vi.mock('@nuxt/kit', () => ({
   createResolver: vi.fn(() => ({ resolve: (p: string) => p })),
   addServerPlugin: vi.fn(),
+  addServerImports: vi.fn(),
 }))
 
 // Mock the manifest builders so the test focuses on the orchestration inside
@@ -15,7 +16,7 @@ vi.mock('../../src/builder/manifest', () => ({
   registerPgEntityManifest: vi.fn(async () => '/virtual/pg.entities.manifest.ts'),
 }))
 
-import { addServerPlugin } from '@nuxt/kit'
+import { addServerImports, addServerPlugin } from '@nuxt/kit'
 import { registerPgManifest, registerPgEntityManifest } from '../../src/builder/manifest'
 import { setupModule } from '../../src/builder/setup'
 
@@ -34,6 +35,7 @@ describe('setupModule', () => {
     expect(registerPgEntityManifest).not.toHaveBeenCalled()
     expect(registerPgManifest).not.toHaveBeenCalled()
     expect(addServerPlugin).not.toHaveBeenCalled()
+    expect(addServerImports).not.toHaveBeenCalled()
   })
 
   it('registers manifests and the server plugin when enabled', async () => {
@@ -50,5 +52,12 @@ describe('setupModule', () => {
     expect(addServerPlugin).toHaveBeenCalledWith(
       '../runtime/plugins/bootstrap',
     )
+    // The injected repository service is auto-imported in Nitro server code.
+    expect(addServerImports).toHaveBeenCalledWith([
+      {
+        name: 'usePgRepositories',
+        from: '../runtime/utils/repositories',
+      },
+    ])
   })
 })

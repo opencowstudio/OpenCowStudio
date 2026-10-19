@@ -29,6 +29,10 @@ application.
   `runtime/utils/env-placeholder.ts`), so the config can reference runtime
   secrets such as `${DB_PASSWORD}`. A required variable without a default
   (`${DB_PASSWORD}`) logs an error and aborts startup when unset.
+- Once every entity's schema, table and repository is ready, the plugin injects
+  the repository service (`runtime/utils/repositories.ts`):
+  `usePgRepositories()` is auto-imported in Nitro server code and resolves a
+  `PgEntityRepository` from its entity class.
 
 ## Usage
 
@@ -59,3 +63,23 @@ databases:
       password: postgres
     slaves: []
 ```
+
+### Repository service
+
+`usePgRepositories()` is auto-imported in `server/` code. Pass an entity class —
+any class scanned from `**/entities/**/*.ts` — and it returns that entity's
+`PgEntityRepository`, typed by the class instance:
+
+```ts
+// server/api/user-accounts.get.ts
+import { UserAccount } from '../entities/user-account'
+
+export default defineEventHandler(async event => {
+  const id = getQuery(event).id as string
+
+  return usePgRepositories().get(UserAccount).findById(id)
+})
+```
+
+The service is injected by the module's bootstrap plugin, so it throws when the
+startup found no pg configuration (nothing was registered to resolve).

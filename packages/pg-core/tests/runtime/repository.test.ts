@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { PgRepositoryManager } from '../../src/runtime/repository'
+import { PgRepositories, PgRepositoryManager } from '../../src/runtime/repository'
 import { PgSqlTemplate } from '../../src/runtime/sql'
+import { PgTableRepository } from '../../src/runtime/table-repository'
 import type { PgDataSourceManager, PgEntityMetadata } from '../../src/index'
 import { column, entityWith } from '../fixtures/metadata'
 
@@ -58,5 +59,26 @@ describe('PgRepositoryManager.createRepositories', () => {
     await expect(
       new PgRepositoryManager(recordingDataSources([])).createRepositories([entity], {}),
     ).rejects.toThrow('No entity class found for "Sample" (table "sample") in the entity type map.')
+  })
+})
+
+describe('PgRepositories.get', () => {
+  it('returns the repository registered for an entity class', async () => {
+    const entity = entityWith([column({ column: 'name', columnType: 'TEXT', default: '' })])
+    class Registered {}
+
+    await new PgRepositoryManager(recordingDataSources([])).createRepositories([entity], {
+      Sample: Registered,
+    })
+
+    expect(new PgRepositories().get(Registered)).toBeInstanceOf(PgTableRepository)
+  })
+
+  it('fails when no repository is registered for the entity class', () => {
+    class Unscanned {}
+
+    expect(() => new PgRepositories().get(Unscanned)).toThrow(
+      'No repository registered for entity "Unscanned".',
+    )
   })
 })

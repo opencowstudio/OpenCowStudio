@@ -189,3 +189,40 @@ export class PgRepositoryManager {
     }
   }
 }
+
+/**
+ * Read side of the repository registry: resolves the repository of an entity
+ * from the entity class itself.
+ *
+ * The registry is module-level and populated once, during startup, by
+ * {@link PgRepositoryManager.createRepositories}. The service therefore holds no
+ * state and creates nothing: it is a handle over what has already been
+ * registered, safe to inject wherever the caller knows the entity class but not
+ * the metadata behind it (for example the generated entity manifest's
+ * `pgEntitiesTypeMap`).
+ */
+export class PgRepositories {
+  /**
+   * Return the registered repository of `entityClass`.
+   *
+   * The returned repository is typed by the class instance, so
+   * `get(UserAccount)` yields a `PgEntityRepository<UserAccount>`.
+   *
+   * @param entityClass The entity class the repository was built for — one of
+   *   the values of the manifest's `pgEntitiesTypeMap`.
+   * @throws When no repository is registered for that class, i.e. the entity
+   *         was not scanned or the registry was not bootstrapped.
+   */
+  get<C extends PgEntityClass>(entityClass: C): PgEntityRepository<InstanceType<C>> {
+    const repository = repositories.get(entityClass)
+
+    if (!repository) {
+      throw new Error(
+        `No repository registered for entity "${entityClass.name}". `
+          + 'Repositories are registered during startup for every scanned entity.',
+      )
+    }
+
+    return repository as PgEntityRepository<InstanceType<C>>
+  }
+}

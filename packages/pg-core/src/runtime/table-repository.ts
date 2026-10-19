@@ -36,6 +36,7 @@
 
 import { generateId } from '@opencowstudio/core'
 import { camelToSnake, snakeToCamel, camelizeKeys, snakeizeKeys } from '../shared/naming.ts'
+import type { PgFilterCondition } from './filter'
 import type { StoreProxy } from './store'
 import type { PgEntityRepository } from './repository'
 
@@ -170,6 +171,24 @@ export class PgTableRepository<T> implements PgEntityRepository<T> {
     const row = await this.store.findById(id)
 
     return row === null ? null : this.toEntity(row as unknown as Record<string, unknown>)
+  }
+
+  /**
+   * Count the entities matching `filter`, or all of them when it is omitted.
+   *
+   * The filter is passed to the store as written. Nothing is converted: a filter
+   * names its column by property key or by column name, and the store resolves
+   * both against the entity metadata it holds (see `StoreProxy.count`), so it
+   * accepts a filter written in the entity shape this repository speaks.
+   *
+   * A count is an aggregate, so there is no row to convert back to an entity:
+   * the number the store reports is returned unchanged.
+   *
+   * @param filter Optional filter conditions narrowing the count.
+   * @returns The number of matching entities.
+   */
+  async count(filter?: PgFilterCondition | null): Promise<number> {
+    return this.store.count(filter)
   }
 
   /**

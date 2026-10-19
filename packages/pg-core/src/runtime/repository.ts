@@ -25,6 +25,7 @@ import { SchemaSync } from './schema-sync'
 import { PgStore } from './store-pg'
 import { PgTableRepository } from './table-repository'
 import type { PgDataSourceManager } from './datasource'
+import type { PgFilterCondition } from './filter'
 import type { PgEntityMetadata } from '../shared/types.ts'
 
 /**
@@ -45,6 +46,16 @@ export interface PgEntityRepository<T, K extends string = string> {
 
   /** Return the row whose key equals `id`, or `null` when it does not exist. */
   findById(id: K): Promise<T | null>
+
+  /**
+   * Return how many entities match `filter`, or every entity when it is
+   * omitted.
+   *
+   * `filter` names its column by property key (`createdAt`) or by column name
+   * (`created_at`), so it can be written against the entity shape; no match
+   * counts `0` instead of reporting a miss.
+   */
+  count(filter?: PgFilterCondition | null): Promise<number>
 }
 
 /**

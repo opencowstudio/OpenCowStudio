@@ -8,14 +8,16 @@
 //
 // The datasource separates the two access paths — `PgDataSource.query` on the
 // master, `PgDataSource.queryRead` on a replica — and the store currently uses
-// the master for all four primitives. The primary-key lookup is included on
-// purpose: it must observe the row a write just committed, which a replica may
-// still be lagging behind.
+// the master for every primitive. The primary-key lookup, the paged read and the
+// count are included on purpose: they must observe the rows a write just
+// committed, which a replica may still be lagging behind.
 //
 // The four statements the store needs — insert, full-record update, delete and
 // the primary-key lookup — are built once from the entity metadata by the
 // constructor (see `PgSqlTemplate`), so a call only binds its parameters and
-// issues a statement it already holds.
+// issues a statement it already holds. The paged read and the count are the
+// exceptions: their `WHERE` / `ORDER BY` / `LIMIT` clauses depend on the options
+// of the call, so they are built per call from the same metadata.
 //
 // The store speaks rows, not entities: a row is keyed by PostgreSQL column name
 // (`PgKeyMetadata.column` / `PgColumnMetadata.column`), never by the camelCase
@@ -24,6 +26,8 @@
 // ---------------------------------------------------------------------------
 
 import { PgSqlTemplate } from './sql'
+import type { PgFilterCondition } from './filter'
+import type { PgSelectPageOptions } from './sql'
 import type { StoreProxy } from './store'
 import type { PgDataSource } from './datasource'
 import type { PgEntityMetadata } from '../shared/types.ts'
@@ -188,5 +192,63 @@ export class PgStore<T> implements StoreProxy<T> {
     const { rows } = (await this.dataSource.query(this.selectSql, [id])) as { rows: T[] }
 
     return rows[0] ?? null
+  }
+
+  /**
+   * Count the rows of the entity, optionally narrowed by `filter`.
+   *
+   * The statement and its values come from {@link PgSqlTemplate.selectCount},
+   * which renders `filter` into the `WHERE` clause with one placeholder per
+   * value it references: statement and parameters are produced by the same walk
+   * of the filter, so they cannot drift apart. `filter` is the only input, so
+   * the statement is built per call rather than in the constructor; without a
+   * filter it counts every row of the entity's table.
+   *
+   * The count goes through `PgDataSource.query` — the master path, as the
+   * primary-key lookup does — so it observes the rows this store just wrote
+   * instead of a replica that may still be lagging behind.
+   *
+   * `COUNT(*)` yields a single row, and PostgreSQL reports it as `bigint`, which
+   * the driver hands back as a string; the value is therefore converted to a
+   * number, and a result that carries no row is reported as `0`.
+   *
+   * @param filter Optional filter conditions driving the `WHERE` clause.
+   * @returns The number of matching rows.
+   */
+  async count(filter?: PgFilterCondition | null): Promise<number> {
+    const { sql, values } = PgSqlTemplate.selectCount(this.metadata, filter)
+    const { rows } = (await this.dataSource.query(sql, values)) as {
+      rows: Array<{ count: string }>
+    }
+
+    return Number(rows[0]?.count ?? 0)
+  }
+
+  /**
+   * Return one page of the entity's rows.
+   *
+   * The statement and its values come from {@link PgSqlTemplate.selectPage},
+   * which renders `options.filter` into the `WHERE` clause, `options.sort` into
+   * the `ORDER BY` clause and binds `options.limit` / `options.offset` last:
+   * statement and parameters are produced by the same walk, so the placeholders
+   * cannot drift from the value list. Only the column list comes from the
+   * metadata the store already holds, so the rows have the same shape
+   * {@link PgStore.findById} returns. The options are the only input, so the
+   * statement is built per call rather than in the constructor.
+   *
+   * The read goes through `PgDataSource.query` — the master path, as the
+   * primary-key lookup and the count do — so the page and its total observe the
+   * rows this store just wrote instead of a replica that may still be lagging
+   * behind.
+   *
+   * @param options Filter, sort and paging of the page to read.
+   * @returns The rows of the page, in `sort` order; empty when the offset is
+   *          past the last row.
+   */
+  async selectPage(options: PgSelectPageOptions): Promise<T[]> {
+    const { sql, values } = PgSqlTemplate.selectPage(this.metadata, options)
+    const { rows } = (await this.dataSource.query(sql, values)) as { rows: T[] }
+
+    return rows
   }
 }

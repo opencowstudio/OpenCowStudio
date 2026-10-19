@@ -47,8 +47,8 @@ out of the runtime bundle. These rules are enforced by
   (`runtime/datasource.ts`: `PgDataSource`, `PgDataSourceManager`).
 - The entity operation contract (`runtime/repository.ts`):
   `PgEntityRepository<T, K>` with the `insert` / `update` / `delete` /
-  `findById` surface, where `K` is the primary-key value type and the key
-  property is `id`.
+  `findById` / `count` surface, where `K` is the primary-key value type and the
+  key property is `id`.
 - The repository registry (`runtime/repository.ts`): `PgRepositoryManager` builds
   and registers one repository per scanned entity, and `PgRepositories.get`
   resolves a registered repository from its entity class.

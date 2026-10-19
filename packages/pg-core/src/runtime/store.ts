@@ -2,10 +2,11 @@
 // Entity store contract (runtime)
 //
 // `StoreProxy<T>` is the data-access contract of the runtime: the row
-// primitives — insert, update, delete and a primary-key lookup — for a single
-// entity. It holds no business concern: paging, validation and lifecycle hooks
-// belong to the repository layer (`runtime/repository.ts`), which composes a
-// store instead of replacing it.
+// primitives — insert, update, delete, a primary-key lookup, a paged read and a
+// count — for a single entity. It holds no business concern: validation,
+// lifecycle hooks and the pagination *policy* (which page to read, how to
+// report a total) belong to the repository layer (`runtime/repository.ts`),
+// which composes a store instead of replacing it.
 //
 // The contract is split from its implementations so the storage behind it can
 // be swapped or stacked:
@@ -24,6 +25,8 @@
 // `PgEntityMetadata` object; this module never imports the builder layer.
 // ---------------------------------------------------------------------------
 
+import type { PgFilterCondition } from './filter'
+import type { PgSelectPageOptions } from './sql'
 import type { PgEntityMetadata } from '../shared/types.ts'
 
 /**
@@ -68,6 +71,31 @@ export interface StoreProxy<T> {
 
   /** Return the row whose key equals `id`, or `null` when it does not exist. */
   findById(id: string): Promise<T | null>
+
+  /**
+   * Return how many rows the entity holds, optionally narrowed by `filter`.
+   *
+   * `filter` is rendered into the `WHERE` clause, so the count covers exactly
+   * the rows a filtered read would return; omitted (or `null`) it counts every
+   * row of the entity. The count is an aggregate, so the result is the number
+   * itself rather than a row: no match counts `0` instead of reporting a miss.
+   */
+  count(filter?: PgFilterCondition | null): Promise<number>
+
+  /**
+   * Return one page of the entity's rows, in the order `options.sort` asks for.
+   *
+   * `options` carries the whole page request: the filter driving the `WHERE`
+   * clause, the sort driving `ORDER BY`, and the page size (`limit`) together
+   * with the row offset (`offset`). Filter and sort are optional — without them
+   * every row matches and the database order applies — while the two paging
+   * values are required, so the size of the page is always the caller's
+   * decision. An offset past the last row yields an empty list.
+   *
+   * The rows come back in the same shape {@link StoreProxy.findById} returns, so
+   * a page and a primary-key lookup can be mapped the same way.
+   */
+  selectPage(options: PgSelectPageOptions): Promise<T[]>
 
   /**
    * Return the resolved entity metadata the store was built for: the database,

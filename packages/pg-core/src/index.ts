@@ -60,6 +60,8 @@ export type {
   PgEqualsFilter,
   PgFilterCondition,
   PgInFilter,
+  PgInValue,
+  PgInValues,
   PgMatchFilter,
   PgRangeFilter,
   PgRangeInput,
@@ -92,7 +94,9 @@ export type {
   PgColumnMismatchKind,
 } from './runtime/schema-sync'
 
-// SQL template catalogue (catalog introspection statements).
+// SQL template catalogue (catalog introspection statements), plus the
+// statement + values pair a builder returns.
+export type { PgSelectPageOptions, PgSqlQuery } from './runtime/sql'
 export { DEFAULT_SCHEMA, PgSqlTemplate } from './runtime/sql'
 
 // DataSource (connection-pool routing & multi-database registry).

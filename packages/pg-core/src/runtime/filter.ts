@@ -7,7 +7,7 @@
 //   * `PgEqualsFilter` — one column compared to one value.
 //   * `PgInFilter`     — one column compared to a set of values.
 //   * `PgRangeFilter`  — one column bounded below and/or above.
-//   * `PgMatchFilter`  — one column matched against a string pattern.
+//   * `PgMatchFilter`  — one column containing a literal string.
 //   * `PgBoolFilter`   — a boolean grouping of the other shapes (`must` /
 //                        `mustNot` / `should`), nestable.
 //
@@ -23,7 +23,7 @@
 //   FilterBuilder.equals('status', 'open').build()
 //   FilterBuilder.anyOf('status', ['open', 'closed']).add('pending').build()
 //   FilterBuilder.range('age').gte(18).lt(65).build()
-//   FilterBuilder.match('name', 'ann%').build()
+//   FilterBuilder.match('name', 'ann').build()
 //   FilterBuilder.bool().must(...).mustNot(...).should(...).build()
 //
 // Each shape has its own builder. Column names are fixed at construction (the
@@ -44,19 +44,43 @@ export type PgRangeValue = number | Date
 /** Equality filter: `column = value`. */
 export interface PgEqualsFilter {
   readonly kind: 'equals'
-  /** Column name, as stored (snake_case, unquoted). */
+  /**
+   * Column to filter on: the property key it is declared under (`createdAt`) or
+   * the stored column name (`created_at`). The statement layer resolves the
+   * former through the entity metadata and uses any other name as written.
+   */
   readonly name: string
   /** Value the column is compared to; any type the column can store. */
   readonly value: unknown
 }
 
-/** Set filter: `column IN (values…)`. */
+/** Value an `in` filter can hold: a number or a string. */
+export type PgInValue = number | string
+
+/**
+ * Values of an `in` filter: a list of numbers or a list of strings.
+ *
+ * A list is meant to be homogeneous — the values are compared to one column, so
+ * they all share its type — and an empty list matches nothing. The statement
+ * layer binds the whole list as one array parameter (`column = ANY($n)`), so a
+ * mixed list would fail the array cast of the column type.
+ */
+export type PgInValues = readonly PgInValue[]
+
+/** Set filter, rendered as `column = ANY($n)` over the value list. */
 export interface PgInFilter {
   readonly kind: 'in'
-  /** Column name, as stored (snake_case, unquoted). */
+  /**
+   * Column to filter on: the property key it is declared under (`createdAt`) or
+   * the stored column name (`created_at`). The statement layer resolves the
+   * former through the entity metadata and uses any other name as written.
+   */
   readonly name: string
-  /** Values the column is compared to; empty means the filter matches nothing. */
-  readonly values: readonly unknown[]
+  /**
+   * Values the column is compared to: numbers for a numeric column, strings for
+   * a text one. Empty means the filter matches nothing.
+   */
+  readonly values: PgInValues
 }
 
 /**
@@ -70,7 +94,11 @@ export interface PgInFilter {
  */
 export interface PgRangeFilter {
   readonly kind: 'range'
-  /** Column name, as stored (snake_case, unquoted). */
+  /**
+   * Column to filter on: the property key it is declared under (`createdAt`) or
+   * the stored column name (`created_at`). The statement layer resolves the
+   * former through the entity metadata and uses any other name as written.
+   */
   readonly name: string
   /** Lower bound, or `null` when the range is open below. */
   readonly minValue: PgRangeValue | null
@@ -86,12 +114,25 @@ export interface PgRangeFilter {
   readonly lt: boolean
 }
 
-/** String matching filter, rendered as a pattern match (`LIKE`) on a column. */
+/**
+ * String matching filter, rendered as a "contains" match on a column:
+ * `LIKE '%value%' ESCAPE '\'`.
+ */
 export interface PgMatchFilter {
   readonly kind: 'match'
-  /** Column name, as stored (snake_case, unquoted). */
+  /**
+   * Column to filter on: the property key it is declared under (`createdAt`) or
+   * the stored column name (`created_at`). The statement layer resolves the
+   * former through the entity metadata and uses any other name as written.
+   */
   readonly name: string
-  /** Pattern the column is matched against. */
+  /**
+   * Literal text the column must contain.
+   *
+   * The statement layer escapes its `LIKE` metacharacters (`%`, `_`, `\`) and
+   * wraps the escaped value in `%…%`, so the value is not a pattern: `%` and `_`
+   * match themselves.
+   */
   readonly value: string
 }
 
@@ -177,21 +218,22 @@ export class EqualsFilterBuilder {
 /**
  * Builder of a set filter; values apply in insertion order.
  *
- * `name` is fixed at construction and validated with `assertValidPgName`.
+ * Every value is a number or a string, matching the column they are compared
+ * to. `name` is fixed at construction and validated with `assertValidPgName`.
  */
 export class InFilterBuilder {
-  private readonly currentValues: unknown[]
+  private readonly currentValues: PgInValue[]
 
   constructor(
     private readonly name: string,
-    values: readonly unknown[] = [],
+    values: readonly PgInValue[] = [],
   ) {
     assertValidPgName(name, 'filter column', 'FilterBuilder')
     this.currentValues = [...values]
   }
 
   /** Append one or more values to the set. */
-  add(...values: unknown[]): this {
+  add(...values: PgInValue[]): this {
     this.currentValues.push(...values)
     return this
   }
@@ -293,7 +335,7 @@ export class RangeFilterBuilder {
  * Builder of a string matching filter.
  *
  * `name` is fixed at construction and validated with `assertValidPgName`; the
- * pattern can be replaced in place.
+ * literal value can be replaced in place.
  */
 export class MatchFilterBuilder {
   constructor(
@@ -303,7 +345,7 @@ export class MatchFilterBuilder {
     assertValidPgName(name, 'filter column', 'FilterBuilder')
   }
 
-  /** Match the column against another pattern. */
+  /** Match the column against another literal value. */
   value(value: string): this {
     this.currentValue = value
     return this
@@ -370,13 +412,14 @@ export class FilterBuilder {
   }
 
   /**
-   * Start a set filter: `column IN (values…)`.
+   * Start a set filter, rendered as `column = ANY($n)`.
    *
-   * `values` is kept as given, duplicates included — PostgreSQL treats `IN` as
-   * a membership test, so `anyOf('status', ['open', 'open'])` is just
-   * `status IN ('open', 'open')`.
+   * `values` is kept as given, duplicates included — the clause is a membership
+   * test, so `anyOf('status', ['open', 'open'])` matches the same rows as a
+   * single `'open'`. Every value is a number or a string, and one list should
+   * hold only one of the two: it is compared to a single column.
    */
-  static anyOf(name: string, values: readonly unknown[] = []): InFilterBuilder {
+  static anyOf(name: string, values: readonly PgInValue[] = []): InFilterBuilder {
     return new InFilterBuilder(name, values)
   }
 
@@ -394,10 +437,11 @@ export class FilterBuilder {
   }
 
   /**
-   * Start a string matching filter on a single column.
+   * Start a "contains" filter on a single column.
    *
-   * `value` is a pattern, not a literal: the statement layer renders it as a
-   * pattern match, so SQL wildcards are part of the value.
+   * `value` is literal text, not a pattern: the statement layer escapes its
+   * `LIKE` metacharacters (`%`, `_`, `\`), wraps it in `%…%` and renders
+   * `column LIKE $n ESCAPE '\'`, so the column must contain that text.
    */
   static match(name: string, value: string): MatchFilterBuilder {
     return new MatchFilterBuilder(name, value)

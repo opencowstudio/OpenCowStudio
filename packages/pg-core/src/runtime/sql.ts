@@ -8,16 +8,26 @@
 // Value templates use positional parameters ($1, $2, …) so callers bind values
 // through `pg` instead of interpolating them into the string. DDL that *names*
 // an object (an extension, a schema, a table) cannot bind an identifier, so the
-// name is quoted into the statement instead — see `quoteIdentifier`. The
-// parameter order of each template is documented next to it, and a template is
-// meant to be passed straight to `PgDataSource.query(text, params)` /
-// `PgDataSource.queryRead(text, params)`.
+// name is quoted into the statement instead — every identifier is wrapped in
+// double quotes (see `quoteIdentifier`) so a name can never be read as a
+// keyword or folded to lower case. The parameter order of each template is
+// documented next to it, and a template is meant to be passed straight to
+// `PgDataSource.query(text, params)` / `PgDataSource.queryRead(text, params)`.
 //
 // Every statement produced here is written out with its own trailing semicolon,
 // so a multi-statement script is built by joining the statements with a newline
 // (`\n`) — the terminator stays part of each statement.
 // ---------------------------------------------------------------------------
 
+import type {
+  PgBoolFilter,
+  PgEqualsFilter,
+  PgFilterCondition,
+  PgInFilter,
+  PgMatchFilter,
+  PgRangeFilter,
+} from './filter'
+import type { PgSortCondition } from './sort'
 import type {
   PgColumnDefault,
   PgColumnMetadata,
@@ -35,14 +45,56 @@ import type {
 export const DEFAULT_SCHEMA = 'public'
 
 /**
- * Quote a PostgreSQL identifier so it can be safely embedded in a statement.
+ * A statement together with the values its placeholders bind.
  *
- * An identifier cannot be a bind parameter, so DDL interpolates it. Doubling
- * any embedded double quote follows the PostgreSQL quoting rules and stops the
- * value from escaping the identifier.
+ * `sql` carries `$1 … $n` placeholders and `values[i - 1]` is the value of `$i`,
+ * so the pair is passed straight to `PgDataSource.query(sql, values)` /
+ * `PgDataSource.queryRead(sql, values)`.
  */
-function quoteIdentifier(name: string): string {
-  return `"${name.replace(/"/g, '""')}"`
+export interface PgSqlQuery {
+  /** Statement text with `$1 … $n` placeholders. */
+  sql: string
+  /** One value per placeholder, in parameter order. */
+  values: unknown[]
+}
+
+/** What {@link PgSqlTemplate.selectPage} reads a page by. */
+export interface PgSelectPageOptions {
+  /** Filter conditions driving the `WHERE` clause; omitted for no filter. */
+  filter?: PgFilterCondition | null
+  /** Sort condition driving the `ORDER BY` clause; omitted for no sort. */
+  sort?: PgSortCondition | null
+  /** Page size, bound to `LIMIT`. */
+  limit: number
+  /** Row offset of the first row of the page, bound to `OFFSET`. */
+  offset: number
+}
+
+/**
+ * Map every property of an entity to the column it is stored in.
+ *
+ * A filter condition names a column by either name — the property key a caller
+ * writes in TypeScript (`createdAt`) or the column name as stored (`created_at`)
+ * — while a statement can only reference the latter, so the map translates the
+ * former to the latter. The key column is part of the map for the same reason.
+ */
+function columnNameMap(metadata: PgEntityMetadata): ReadonlyMap<string, string> {
+  const map = new Map<string, string>([[metadata.key.propertyKey, metadata.key.column]])
+
+  for (const column of metadata.columns) map.set(column.propertyKey, column.column)
+
+  return map
+}
+
+/**
+ * Resolve the name a filter carries to the column it selects.
+ *
+ * The name is either a property key of the entity (`createdAt`) or already the
+ * column name (`created_at`): the map holds the former to the latter, and a name
+ * the map does not know is used as written.
+ */
+function resolveFilterColumn(name: string, columns: ReadonlyMap<string, string>): string {
+  return columns.get(name) ?? name
 }
 
 /**
@@ -63,9 +115,44 @@ const COLUMN_TYPE_SQL: Record<PgColumnType, string> = {
   DATE: 'TIMESTAMPTZ',
 }
 
+/**
+ * Wrap a PostgreSQL identifier in double quotes.
+ *
+ * An identifier cannot be a bind parameter, so DDL interpolates it into the
+ * statement. Quoting keeps the name out of the keyword namespace and preserves
+ * its exact spelling instead of folding it to lower case. The metadata names
+ * are already validated by the builder (see `assertValidPgName`), so no further
+ * escaping is applied here.
+ */
+function quoteIdentifier(name: string): string {
+  return `"${name}"`
+}
+
 /** Quote a value as a PostgreSQL string literal, doubling embedded quotes. */
 function quoteLiteral(value: string): string {
   return `'${value.replace(/'/g, "''")}'`
+}
+
+/**
+ * Character that escapes `LIKE` metacharacters in a pattern.
+ *
+ * A backslash — also PostgreSQL's default escape character for `LIKE`. The
+ * rendered clause states it explicitly (`ESCAPE '\'`), so the match does not
+ * depend on the server default.
+ */
+const LIKE_ESCAPE = '\\'
+
+/**
+ * Escape the `LIKE` metacharacters of a value so it matches literally.
+ *
+ * `%` (any sequence), `_` (any single character) and the escape character
+ * itself are prefixed with {@link LIKE_ESCAPE}. The three are replaced in one
+ * pass, so a backslash cannot swallow the marks added for the other two: `a\b`
+ * becomes `a\\b`, and `50%` becomes `50\%`. The value is bound as a parameter,
+ * so this is about pattern semantics, not about SQL injection.
+ */
+function escapeLikeValue(value: string): string {
+  return value.replace(/[\\%_]/g, character => `${LIKE_ESCAPE}${character}`)
 }
 
 /**
@@ -163,9 +250,8 @@ export class PgSqlTemplate {
    * Build the statement that creates a schema when it is missing.
    *
    * Parameters: none. The schema name is a DDL identifier, so — unlike the
-   * value templates — it cannot be a bind parameter; it is passed through
-   * `quoteIdentifier` instead, which keeps it injection-safe. `IF NOT EXISTS`
-   * makes the statement idempotent.
+   * value templates — it cannot be a bind parameter; it is quoted with
+   * `quoteIdentifier` instead. `IF NOT EXISTS` makes the statement idempotent.
    *
    * @param schema Schema to create; defaults to {@link DEFAULT_SCHEMA}.
    */
@@ -262,8 +348,8 @@ export class PgSqlTemplate {
    * {@link PgSqlTemplate.createTable}: the type comes from
    * {@link COLUMN_TYPE_SQL}, and the `DEFAULT` clause is built by
    * `columnDefaultClause` (`null` and `Date` defaults are omitted). Identifiers
-   * cannot be bind parameters, so the schema, table and column names are quoted
-   * with `quoteIdentifier`.
+   * cannot be bind parameters, so the schema, table and column names are
+   * quoted with `quoteIdentifier`.
    *
    * When the column declares a comment, the matching `COMMENT ON COLUMN`
    * statement is appended, so the returned string is a complete, runnable
@@ -548,6 +634,273 @@ export class PgSqlTemplate {
       `FROM ${tableRef}`,
       `WHERE ${quoteIdentifier(metadata.key.column)} = $1;`,
     ].join('\n')
+  }
+
+  /**
+   * Build the paged read statement for an entity, with its values.
+   *
+   * Shape: `SELECT … FROM <table> [WHERE …] [ORDER BY …] LIMIT $n OFFSET $n+1`.
+   * The column list mirrors {@link PgSqlTemplate.selectRow}, so a paged read
+   * returns the same row shape as the primary-key lookup. Both `filter` and
+   * `sort` are optional: without a filter the `WHERE` clause is omitted, without
+   * a sort — or with a multi-column sort that carries no columns — the
+   * `ORDER BY` clause is omitted. The `LIMIT` / `OFFSET` clause is always
+   * emitted and always closes the statement, with the page size and the row
+   * offset bound as the last two parameters.
+   *
+   * Identifiers cannot be bind parameters, so the schema, table, column and sort
+   * column names are quoted with `quoteIdentifier`, while the filter values and
+   * the two paging values are bound positionally.
+   *
+   * The statement and its values are produced together and returned as one
+   * {@link PgSqlQuery}: the filter values come first, in the order the rendered
+   * clauses reference them, followed by `LIMIT` and `OFFSET`. Both halves are
+   * built from one walk of the filter, so the placeholders cannot drift from the
+   * value list.
+   *
+   * The total number of matching rows is a separate statement — see
+   * {@link PgSqlTemplate.selectCount} — so paging and counting stay independent:
+   * a caller can run either one, and the count does not depend on the page size.
+   *
+   * @param metadata The resolved entity metadata to build the statement from.
+   * @param options  Filter, sort and paging of the page to read.
+   */
+  static selectPage(metadata: PgEntityMetadata, options: PgSelectPageOptions): PgSqlQuery {
+    const tableRef = qualifyTable(metadata.schema, metadata.table)
+    const columns = [metadata.key.column, ...metadata.columns.map(column => column.column)]
+    const columnMap = columnNameMap(metadata)
+    const values: unknown[] = []
+    const where = options.filter
+      ? PgSqlTemplate.renderFilter(options.filter, values, columnMap)
+      : null
+    const orderBy = options.sort ? PgSqlTemplate.renderSort(options.sort) : null
+
+    const statements = [
+      'SELECT',
+      columns.map(column => `  ${quoteIdentifier(column)}`).join(',\n'),
+      `FROM ${tableRef}`,
+    ]
+
+    if (where) statements.push(`WHERE ${where}`)
+    if (orderBy) statements.push(`ORDER BY ${orderBy}`)
+
+    // The paging values close both lists: they are the last placeholders of the
+    // statement and the last entries of the value list.
+    values.push(options.limit, options.offset)
+    statements.push(`LIMIT $${values.length - 1} OFFSET $${values.length};`)
+
+    return { sql: statements.join('\n'), values }
+  }
+
+  /**
+   * Build the statement counting the rows an entity holds.
+   *
+   * Shape: `SELECT COUNT(*) FROM <table> [WHERE …];` — the same `WHERE` clause
+   * the page statement renders, but no `ORDER BY`, `LIMIT` or `OFFSET`, so the
+   * two can be combined to report a page and the total it pages through. The
+   * filter is rendered exactly as {@link PgSqlTemplate.selectPage} renders it,
+   * so its placeholders are numbered identically and the filter values apply to
+   * either statement.
+   *
+   * @param metadata The resolved entity metadata to build the statement from.
+   * @param filter   Optional filter conditions driving the `WHERE` clause.
+   * @returns The count statement and one value per placeholder.
+   */
+  static selectCount(metadata: PgEntityMetadata, filter?: PgFilterCondition | null): PgSqlQuery {
+    const tableRef = qualifyTable(metadata.schema, metadata.table)
+    const values: unknown[] = []
+    const where = filter
+      ? PgSqlTemplate.renderFilter(filter, values, columnNameMap(metadata))
+      : null
+
+    const sql = where
+      ? `SELECT COUNT(*) FROM ${tableRef}\nWHERE ${where};`
+      : `SELECT COUNT(*) FROM ${tableRef};`
+
+    return { sql, values }
+  }
+
+  /**
+   * Render a filter condition as a SQL predicate.
+   *
+   * Dispatches on `kind` to the renderer of that shape; each renderer pushes the
+   * values it references onto `values` in render order, and a value's
+   * placeholder is the position it occupies in that list, so a clause and the
+   * value list are numbered by the same walk.
+   *
+   * A filter names its column by property key or by column name; `columns` maps
+   * the former to the latter (see {@link columnNameMap}), so a name it does not
+   * hold is used as written.
+   *
+   * A shape that renders no predicate — a range with both bounds `null`, an
+   * empty boolean group, a boolean group whose members all render nothing —
+   * returns `null` so the caller omits it instead of emitting `WHERE` noise.
+   *
+   * @param filter  The filter condition to render.
+   * @param values  The parameter list the placeholders are numbered against.
+   * @param columns Property key to column name of the entity being read.
+   */
+  private static renderFilter(
+    filter: PgFilterCondition,
+    values: unknown[],
+    columns: ReadonlyMap<string, string>,
+  ): string | null {
+    switch (filter.kind) {
+      case 'equals':
+        return PgSqlTemplate.renderEqualsFilter(filter, resolveFilterColumn(filter.name, columns), values)
+      case 'in':
+        return PgSqlTemplate.renderInFilter(filter, resolveFilterColumn(filter.name, columns), values)
+      case 'range':
+        return PgSqlTemplate.renderRangeFilter(filter, resolveFilterColumn(filter.name, columns), values)
+      case 'match':
+        return PgSqlTemplate.renderMatchFilter(filter, resolveFilterColumn(filter.name, columns), values)
+      case 'bool':
+        return PgSqlTemplate.renderBoolFilter(filter, values, columns)
+    }
+  }
+
+  /**
+   * Render an equality filter: `"column" = $n`.
+   *
+   * The compared value is pushed onto `values`, so the predicate always binds
+   * exactly one parameter — `null` included, which renders `= $n` and therefore
+   * never matches in SQL.
+   *
+   * @param filter The equality filter to render.
+   * @param column The resolved column name to compare.
+   * @param values The parameter list the placeholder is numbered against.
+   */
+  private static renderEqualsFilter(filter: PgEqualsFilter, column: string, values: unknown[]): string {
+    values.push(filter.value)
+    return `${quoteIdentifier(column)} = $${values.length}`
+  }
+
+  /**
+   * Render a set filter: `"column" = ANY($n)`.
+   *
+   * The values bind as one array parameter — a list of numbers or a list of
+   * strings (see `PgInValues`) — so the statement carries a single placeholder
+   * whatever the size of the set, and the numbering of the parameters that
+   * follow does not depend on it. PostgreSQL rewrites `IN (…)` into exactly this
+   * form, so the clause matches the same rows; an empty list binds `'{}'`, which
+   * matches nothing (`= ANY('{}')` is always false) without a `FALSE` special
+   * case.
+   *
+   * @param filter The set filter to render.
+   * @param column The resolved column name to compare.
+   * @param values The parameter list the placeholder is numbered against.
+   */
+  private static renderInFilter(filter: PgInFilter, column: string, values: unknown[]): string {
+    values.push([...filter.values])
+    return `${quoteIdentifier(column)} = ANY($${values.length})`
+  }
+
+  /**
+   * Render a range filter: `"column" >= $n AND "column" < $m`.
+   *
+   * Each bound is rendered only when it is not `null`, with the operator its
+   * flag selects (`>` / `>=` below, `<` / `<=` above), so an open side adds no
+   * predicate. A closed range is wrapped in parentheses to keep it a single
+   * clause when it is combined with `AND` / `OR`; a single bound is emitted
+   * bare. A range with both bounds `null` returns `null`, consuming no value.
+   *
+   * @param filter The range filter to render.
+   * @param column The resolved column name to compare.
+   * @param values The parameter list the placeholders are numbered against.
+   */
+  private static renderRangeFilter(filter: PgRangeFilter, column: string, values: unknown[]): string | null {
+    const comparisons: string[] = []
+
+    if (filter.minValue !== null) {
+      values.push(filter.minValue)
+      comparisons.push(`${quoteIdentifier(column)} ${filter.gt ? '>' : '>='} $${values.length}`)
+    }
+    if (filter.maxValue !== null) {
+      values.push(filter.maxValue)
+      comparisons.push(`${quoteIdentifier(column)} ${filter.lt ? '<' : '<='} $${values.length}`)
+    }
+
+    if (comparisons.length === 0) return null
+
+    return comparisons.length === 1 ? comparisons[0]! : `(${comparisons.join(' AND ')})`
+  }
+
+  /**
+   * Render a string matching filter: `"column" LIKE $n ESCAPE '\'`.
+   *
+   * The filter value names a literal substring, not a pattern: its `LIKE`
+   * metacharacters (`%`, `_` and the backslash) are escaped by
+   * {@link escapeLikeValue}, and the escaped value is bound wrapped in `%…%`, so
+   * the clause matches every column that contains it. `ESCAPE '\'` is stated
+   * explicitly, so the escape character does not depend on the server default.
+   * The pattern is still a bind parameter — nothing is interpolated.
+   *
+   * @param filter The matching filter to render.
+   * @param column The resolved column name to match.
+   * @param values The parameter list the placeholder is numbered against.
+   */
+  private static renderMatchFilter(filter: PgMatchFilter, column: string, values: unknown[]): string {
+    values.push(`%${escapeLikeValue(filter.value)}%`)
+    return `${quoteIdentifier(column)} LIKE $${values.length} ESCAPE '\\'`
+  }
+
+  /**
+   * Render a boolean grouping of filters.
+   *
+   * Members render in group order — `must` first, then `mustNot`, then
+   * `should` — so parameters are numbered by that walk. `must` clauses are
+   * joined with `AND`, `mustNot` clauses become `NOT (…)` and join the same
+   * `AND` chain, and `should` clauses form one `OR` group in parentheses (an
+   * empty `OR` list would match everything, so it is omitted entirely).
+   * Members that render nothing are skipped. One clause is emitted bare and
+   * several are wrapped in parentheses; an empty group returns `null`.
+   *
+   * @param filter  The boolean group to render.
+   * @param values  The parameter list the placeholders are numbered against.
+   * @param columns Property key to column name of the entity being read.
+   */
+  private static renderBoolFilter(
+    filter: PgBoolFilter,
+    values: unknown[],
+    columns: ReadonlyMap<string, string>,
+  ): string | null {
+    const clauses: string[] = []
+
+    for (const condition of filter.must) {
+      const clause = PgSqlTemplate.renderFilter(condition, values, columns)
+      if (clause) clauses.push(clause)
+    }
+    for (const condition of filter.mustNot) {
+      const clause = PgSqlTemplate.renderFilter(condition, values, columns)
+      if (clause) clauses.push(`NOT (${clause})`)
+    }
+
+    const should = filter.should
+      .map(condition => PgSqlTemplate.renderFilter(condition, values, columns))
+      .filter((clause): clause is string => clause !== null)
+
+    if (should.length > 0) clauses.push(`(${should.join(' OR ')})`)
+    if (clauses.length === 0) return null
+
+    return clauses.length === 1 ? clauses[0]! : `(${clauses.join(' AND ')})`
+  }
+
+  /**
+   * Render a sort condition as an `ORDER BY` term list.
+   *
+   * A multi-column sort keeps its columns in order; a multi-column sort with no
+   * columns — and a single-column sort, which always carries one — is rendered
+   * as a single term. Returns `null` when the condition contributes no term, so
+   * the caller omits the `ORDER BY` clause. Sort terms are identifiers plus a
+   * fixed `ASC` / `DESC` keyword, so they bind no value.
+   *
+   * @param sort The sort condition to render.
+   */
+  private static renderSort(sort: PgSortCondition): string | null {
+    if (sort.kind === 'column') return `${quoteIdentifier(sort.name)} ${sort.order}`
+    if (sort.sorts.length === 0) return null
+
+    return sort.sorts.map(column => `${quoteIdentifier(column.name)} ${column.order}`).join(', ')
   }
 
   /**

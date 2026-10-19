@@ -3,13 +3,13 @@ import { describe, it, expect } from 'vitest'
 import { basename } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parsePgEntities } from '../../src/builder'
-import type { PgEntityMetadata } from '../../src'
+import type { EntityMetadata } from '../../src'
 
 const entitiesDir = fileURLToPath(new URL('../fixtures/entities/', import.meta.url))
 const entity = (name: string) => `${entitiesDir}${name}`
 
-/** Parse a single entity fixture file and return its one PgEntityMetadata. */
-function parseOne(name: string): PgEntityMetadata {
+/** Parse a single entity fixture file and return its one EntityMetadata. */
+function parseOne(name: string): EntityMetadata {
   const metas = parsePgEntities([entity(name)])
   if (metas.length !== 1) {
     throw new Error(`expected exactly one entity in ${name}, got ${metas.length}`)

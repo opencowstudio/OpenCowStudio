@@ -8,11 +8,11 @@ import type {
   PgKeyOptions,
 } from './decorators.ts'
 import type {
-  PgColumnMetadata,
-  PgColumnType,
-  PgEntityMetadata,
-  PgIndexMetadata,
-  PgKeyMetadata,
+  ColumnMetadata,
+  ColumnType,
+  EntityMetadata,
+  IndexMetadata,
+  KeyMetadata,
 } from '../shared/types.ts'
 
 // Tagged logger so the core stays framework-agnostic (no Nuxt dep).
@@ -41,7 +41,7 @@ const logger = consola.withTag('pg-parser')
 // Steps 1–6 read the decorator source verbatim; step 7 is where correctness is
 // enforced — identifiers validated, index options validated, boolean options
 // type-checked and defaults filled in — producing a fully-resolved
-// `PgEntityMetadata`.
+// `EntityMetadata`.
 // ---------------------------------------------------------------------------
 
 /** Options controlling how a single entity's metadata is assembled. */
@@ -234,10 +234,10 @@ export function parsePgColumn(
   return { propertyKey, options }
 }
 
-// === Step 7 — assemble + resolve PgEntityMetadata ========================
+// === Step 7 — assemble + resolve EntityMetadata ========================
 
 /**
- * Build the fully-resolved `PgEntityMetadata` for a single `@PgEntity` class
+ * Build the fully-resolved `EntityMetadata` for a single `@PgEntity` class
  * declaration.
  *
  * Returns `undefined` when the class is not decorated with `@PgEntity` (so it
@@ -256,7 +256,7 @@ export function parsePgEntity(
   node: ts.ClassDeclaration,
   sourceFile: ts.SourceFile,
   options: ParsePgEntityOptions = {},
-): PgEntityMetadata | undefined {
+): EntityMetadata | undefined {
   const entityDecorator = getDecorator(node, 'PgEntity')
   if (!node.name || !entityDecorator) return undefined
 
@@ -289,7 +289,7 @@ export function parsePgEntity(
   // --- key field ---
   // The key column name is fixed to `id`; `@PgKey` carries no column option, so
   // the property name never affects the database column.
-  const keyMetadata: PgKeyMetadata = {
+  const keyMetadata: KeyMetadata = {
     propertyKey: key.propertyKey,
     column: KEY_COLUMN,
     generated: resolveBoolean(key.options.generated, true, `key ${key.propertyKey}.generated on ${className}`),
@@ -337,16 +337,16 @@ export function parsePgEntity(
 
 /**
  * Build a Program from `rootNames`, find every `@PgEntity` class, and return
- * their resolved `PgEntityMetadata` in declaration order.
+ * their resolved `EntityMetadata` in declaration order.
  */
 export function parsePgEntities(
   rootNames: string[],
   options: ParseProgramOptions = {},
-): PgEntityMetadata[] {
+): EntityMetadata[] {
   const program = createProgram(rootNames, options) // Step 1
   const classes = findEntityClassDeclarations(program, rootNames) // Step 2
 
-  const result: PgEntityMetadata[] = []
+  const result: EntityMetadata[] = []
   for (const { node, sourceFile } of classes) {
     if (options.skipInvalid) {
       try {
@@ -588,9 +588,9 @@ const KEY_COLUMN = 'id'
 function resolveIndexes(
   raw: unknown,
   className: string,
-  keyMetadata: PgKeyMetadata,
-  columnMetadata: PgColumnMetadata[],
-): PgIndexMetadata[] {
+  keyMetadata: KeyMetadata,
+  columnMetadata: ColumnMetadata[],
+): IndexMetadata[] {
   if (raw === undefined || raw === null) return []
 
   if (!Array.isArray(raw)) {
@@ -652,7 +652,7 @@ function resolveIndexes(
 }
 
 /** Allowed logical SQL column types. */
-const COLUMN_TYPES: ReadonlySet<string> = new Set<PgColumnType>([
+const COLUMN_TYPES: ReadonlySet<string> = new Set<ColumnType>([
   'BIGINT',
   'INT',
   'DOUBLE',
@@ -669,7 +669,7 @@ const COLUMN_TYPES: ReadonlySet<string> = new Set<PgColumnType>([
  * Throws an Error (with detailed context) and logs to stderr when the value
  * is missing or not one of the allowed column types.
  */
-function resolveColumnType(value: PgColumnType | undefined, context: string): PgColumnType {
+function resolveColumnType(value: ColumnType | undefined, context: string): ColumnType {
   if (value === undefined) {
     const message = `Missing required columnType for ${context}. Expected one of: ${[...COLUMN_TYPES].join(', ')}.`
     logger.error(message)
@@ -690,9 +690,9 @@ function resolveColumnType(value: PgColumnType | undefined, context: string): Pg
  *
  * Numeric types fall back to `0`, `BOOLEAN` to `false`, `TEXT` to the empty
  * string, and the JSON / date types to `null`. The mapping is exhaustive over
- * `PgColumnType`, so adding a type without a fallback is a compile error.
+ * `ColumnType`, so adding a type without a fallback is a compile error.
  */
-const COLUMN_DEFAULT_ZERO: Record<PgColumnType, unknown> = {
+const COLUMN_DEFAULT_ZERO: Record<ColumnType, unknown> = {
   BIGINT: 0,
   INT: 0,
   DOUBLE: 0,
@@ -715,7 +715,7 @@ const COLUMN_DEFAULT_ZERO: Record<PgColumnType, unknown> = {
  */
 function resolveColumnDefault(
   raw: string | undefined,
-  columnType: PgColumnType,
+  columnType: ColumnType,
   context: string,
 ): unknown {
   if (raw === undefined) return COLUMN_DEFAULT_ZERO[columnType]

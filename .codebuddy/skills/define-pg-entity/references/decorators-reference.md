@@ -1,8 +1,7 @@
 # Entity Decorator Reference
 
-Source of truth: `packages/pg-core/src/builder/decorators.ts` (option types and marker
-functions) and `packages/pg-core/src/builder/parser.ts` (resolution and validation).
-Resolved metadata shapes live in `packages/pg-core/src/shared/types.ts`.
+Options, defaults and validation rules of the `@PgEntity` / `@PgKey` / `@PgColumn`
+decorators.
 
 ## Imports
 
@@ -13,8 +12,7 @@ import type {
   PgKeyOptions,
   PgColumnOptions,
   PgIndexOptions,
-  PgColumnType,
-  PgEntityMetadata,
+  ColumnType,
 } from '@opencowstudio/pg-core'
 ```
 
@@ -30,12 +28,10 @@ back to the option's default.
 Only `PgColumnOptions.columnType` and `PgIndexOptions.columns` are required. All other
 options are optional and defaulted, so omit them unless a different value is required.
 
-## `PgColumnType`
-
-Defined in `packages/pg-core/src/shared/types.ts`.
+## `ColumnType`
 
 ```ts
-type PgColumnType =
+type ColumnType =
   | 'BIGINT'
   | 'DOUBLE'
   | 'BOOLEAN'
@@ -86,20 +82,19 @@ index is created against PostgreSQL.
 | `comment` | `string` | `''` | Column comment |
 
 There is **no** `column` option: the key's database column is always `id`, regardless of
-the property name. `PgKeyMetadata.column` is therefore always `'id'`.
+the property name.
 
 Runtime behaviour: the decorator installs a class-field initializer that throws when a
 set key value is not a `string`. Declaring `@PgKey() id!: number` therefore parses fine
 but fails at instance initialization. Keep key properties typed as `string`.
 
-The runtime repository contract (`PgEntityRepository<T, K>`) is fixed to the property
-name `id`, so name the key field `id`.
+The runtime expects the key property to be `id`, so name the key field `id`.
 
 ## `@PgColumn(options?)` — property decorator
 
 | Option | Type | Default | Meaning |
 |---|---|---|---|
-| `columnType` | `PgColumnType` | — (**required**) | Logical SQL column type |
+| `columnType` | `ColumnType` | — (**required**) | Logical SQL column type |
 | `column` | `string` | snake_case(property name) | Column name |
 | `comment` | `string` | `''` | Column comment |
 
@@ -125,59 +120,11 @@ Anything else throws a position-aware error, for example:
 - `Cannot resolve identifier "X" used in a decorator at <file>:<line>:<col>. Use a literal or a locally-declared constant.`
 
 Consequences: importing a shared constant (`import { SCHEMA } from './constants'`) or
-calling a helper (`@PgEntity({ table: buildName('user') })`) breaks the build-time parse.
+calling a helper (`@PgEntity({ table: buildName('user') })`) makes the entity
+unreadable.
 
-## Resolution pipeline
-
-`parsePgEntities(rootNames, { skipInvalid? })`:
-
-1. `createProgram` — a `ts.Program` over the root files (ESNext, Bundler resolution).
-2. `findEntityClassDeclarations` — every named class with a `@PgEntity` decorator in the
-   root files (declaration files and imported files excluded).
-3. `parseClassDecorator` — the `@PgEntity` options, including the `indexes` array.
-4. `parsePropertyDecorators` — walks members, collects the single `@PgKey` and every
-   `@PgColumn`.
-5. `parsePgKey` / `parsePgColumn` — per-decorator options.
-6. `parsePgEntity` — assembles and resolves `PgEntityMetadata`: identifiers validated,
-   `indexes` entries validated, boolean options type-checked, defaults filled in.
-
-`{ skipInvalid: true }` (used by `nuxt-pg`) logs `Skipping entity "<Name>": <error>` and
-continues; otherwise the first invalid entity aborts the scan.
-
-## Resolved metadata
-
-```ts
-interface PgEntityMetadata {
-  dbName: string
-  schema: string
-  table: string
-  comment: string
-  createTableAuto: boolean
-  addColumnAuto: boolean
-  createIndexAuto: boolean
-  indexes: { columns: string[], unique: boolean }[]
-  key: { propertyKey: string, column: string /* always 'id' */, generated: boolean, comment: string }
-  columns: { propertyKey: string, column: string, comment: string, columnType: PgColumnType }[]
-}
-
-interface PgConfigMetadata {
-  pool: { max: number, min: number, idleTimeoutMillis: number, maxLifetimeSeconds: number }
-  databases: Record<string, { master: PgNodeMetadata, slaves: PgNodeMetadata[] }>
-}
-// PgNodeMetadata = { url: string, username: string, password: string }
-```
-
-## `nuxt-pg` module options
-
-| Option | Default | Meaning |
-|---|---|---|
-| `enabled` | `true` | Enable/disable the module |
-| `configFile` | `'app.config.yaml'` | Datasource config, resolved from the Nuxt root dir |
-| `entityPaths` | `['server/entities/**/*.ts']` | Globs of entity files, resolved from the Nuxt root dir |
-
-The module writes `pg.manifest.ts` (config) and `pg.entities.manifest.ts` (entities) into
-the build directory and exposes them via the `#pg-manifest` and
-`#pg-entities-manifest` aliases, both server-only.
+An entity that breaks a rule is skipped with `Skipping entity "<Name>": <error>` rather
+than failing the build.
 
 ## Exact error messages
 

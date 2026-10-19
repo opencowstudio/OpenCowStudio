@@ -1,22 +1,19 @@
 ---
 name: define-pg-entity
-description: This skill should be used when adding, defining, or modifying a PostgreSQL entity (a database table class) in an OpenCowStudio Nuxt project — that is, any `@PgEntity`-decorated class under an app's `server/entities/` directory. It covers the `@PgEntity` / `@PgKey` / `@PgColumn` decorators of `@opencowstudio/pg-core`, their options and defaults (including the `indexes` option that declares table indexes), the static rules enforced by the build-time parser, and how the `@opencowstudio/nuxt-pg` module discovers entities at build time.
+description: This skill should be used when adding, defining, or modifying a PostgreSQL entity (a database table class) in an OpenCowStudio Nuxt project — that is, any `@PgEntity`-decorated class under an app's `server/entities/` directory. It covers the `@PgEntity` / `@PgKey` / `@PgColumn` decorators of `@opencowstudio/pg-core`, their options and defaults (including the `indexes` option that declares table indexes), and the rules an entity must satisfy to be accepted.
 ---
 
 # Define a PostgreSQL Entity
 
 ## Overview
 
-In OpenCowStudio an entity is a plain TypeScript class decorated with `@PgEntity`
-markers from `@opencowstudio/pg-core`. The decorators are **static markers**: nothing
-is imported or instantiated at scan time. The `@opencowstudio/nuxt-pg` module globs the
-entity source files at build time and reads the decorator *source* through the
-TypeScript compiler API (`parsePgEntities` in `pg-core/builder/parser.ts`) to produce a
-validated, defaulted `PgEntityMetadata` collection, which is baked into a server-only
-manifest and registered at runtime by a Nitro plugin.
+In OpenCowStudio an entity is a plain TypeScript class decorated with `@PgEntity`,
+`@PgKey` and `@PgColumn` from `@opencowstudio/pg-core`. The decorators are **static
+markers**: nothing is imported or instantiated when the entity is read.
 
-Because resolution is static, an entity is only as good as what the parser can read
-from the source text. Every rule below is enforced by that parse pass.
+Because an entity is read from its *source text* rather than constructed, an entity is
+only as good as what the source spells out: every option must be a literal or a
+locally-declared constant, and every rule below is enforced when the entity is read.
 
 ## When This Skill Applies
 
@@ -28,33 +25,30 @@ Use this skill when:
   while other entities do.
 - A build log contains `Skipping entity "<Name>": ...`.
 
-Do not use this skill for datasource or pool configuration (that is `app.config.yaml`
-and `PgConfigMetadata`), and do not use it to implement CRUD queries (repository
-creation in `PgRepositoryManager.createRepositories` is not implemented yet — the
-manager currently only ensures each entity's schema exists).
+Do not use this skill for datasource or pool configuration (that is `app.config.yaml`),
+and do not use it to implement queries.
 
 ## Workflow
 
 1. **Pick the file location.** Create one file per entity under the target app's
    `server/entities/` directory, e.g. `apps/playground/server/entities/user.ts`. The
    default glob is `server/entities/**/*.ts` (Nuxt module option `entityPaths`), so
-   nested subdirectories are scanned too. Only files matched by that glob are scanned;
-   an entity class that is merely imported by a scanned file is **not** discovered,
-   because the parser only walks the root files it was given.
+   nested subdirectories are scanned too. Only files matched by that glob are read; an
+   entity class that is merely imported by a scanned file is **not** discovered.
 2. **Import the decorators** from the package root: `@opencowstudio/pg-core`. Never
-   import from `@opencowstudio/pg-core/builder` in entity files — that subpath pulls in
-   the TypeScript compiler API and is build-time only.
-3. **Declare and export one named class**, decorated with `@PgEntity(...)`. The parser
-   matches the decorator by the *identifier text* `PgEntity`, so never alias the import
+   import from `@opencowstudio/pg-core/builder` in entity files — that subpath is
+   build-time only and must not be pulled into an entity.
+3. **Declare and export one named class**, decorated with `@PgEntity(...)`. The
+   decorator is matched by the *identifier text* `PgEntity`, so never alias the import
    (`import { PgEntity as Entity }` would make the class undiscoverable) and never call
    it through a namespace (`pg.PgEntity(...)`).
 4. **Add exactly one `@PgKey` field.** The key's database column is always `id` and the
-   decorator has no column option, so name the property `id` too — the runtime repository
-   contract (`PgEntityRepository`) is fixed to the `id` property. At runtime the key value
-   must be a `string` — `@PgKey` installs an initializer that throws for any other type.
+   decorator has no column option, so name the property `id` too — the runtime expects the
+   key property to be `id`. At runtime the key value must be a `string` — `@PgKey`
+   installs an initializer that throws for any other type.
 5. **Add `@PgColumn` fields.** Every column must declare `columnType`; there is no
-   inference from the TypeScript type. Only `PropertyDeclaration` members are read, so
-   getters, methods and constructor parameter properties are ignored.
+   inference from the TypeScript type. Only field declarations are read, so getters,
+   methods and constructor parameter properties are ignored.
 6. **Declare indexes through `@PgEntity`'s `indexes` option** (there is no `@PgIndex`
    decorator). Each entry is one index definition; index column names are the
    **database column names**, not the property names.
@@ -127,11 +121,10 @@ optional **and has a default**. Therefore:
 | `dbName` / `schema` / `table` / column names / index columns match `/^[a-zA-Z0-9_]+$/` | Any other identifier throws |
 | Boolean options are real `boolean` literals | A string (`'true'` / `'false'` / `'1'` / `'0'`) or any other type throws |
 
-The static parser is also the reason a **missing** table is usually a **validation**
-problem: `nuxt-pg` calls `parsePgEntities(files, { skipInvalid: true })`, so a class that
-fails any rule above is skipped with a warning instead of failing the build. Always read
-the build log for `Skipping entity ...` lines before assuming the entity is absent for
-another reason.
+A **missing** table is therefore usually a **validation** problem: a class that violates
+any rule above is skipped with `Skipping entity "<Name>": ...` in the build log instead of
+failing the build, so read that line before assuming the entity is absent for another
+reason.
 
 ## Defaults
 
@@ -153,10 +146,10 @@ name throws at runtime with `No PostgreSQL datasource configured for dbName "...
 
 ## Type Mapping (convention, NOT enforced)
 
-The parser never inspects the TypeScript property type — `columnType` is authoritative.
+The TypeScript property type is never inspected — `columnType` is authoritative.
 The following pairing is the convention used across this repository:
 
-| TypeScript property type | `PgColumnType` |
+| TypeScript property type | `ColumnType` |
 |---|---|
 | `string` | `TEXT` |
 | `number` (integral) | `BIGINT` |
@@ -171,16 +164,15 @@ The following pairing is the convention used across this repository:
 ```bash
 pnpm typecheck                       # type-check every workspace package
 pnpm --filter @opencowstudio/playground typecheck   # type-check the app entities
-pnpm playground:dev                  # then read the nuxt-pg log output
+pnpm playground:dev                  # then read the log output
 ```
 
-Expected log lines at build/startup: `Scanned <n> entity file(s) from entity paths`,
-`Resolved entity table "<table>"` per entity, and
-`PgRepositoryManager initialized (entities: <n>)` at runtime.
+Start or build the app and confirm the entity is picked up: `Resolved entity table
+"<table>"` should appear for it, with no `Skipping entity "<Name>"` line.
 
 ## Resources
 
-- `references/decorators-reference.md` — full option tables, literal-evaluation rules,
-  the resolution pipeline, resolved metadata shape, and exact error messages.
+- `references/decorators-reference.md` — option tables, defaults, literal-evaluation
+  rules and exact error messages for the three decorators.
 - `references/entity-examples.md` — minimal, standard, indexed, multi-database and
   constant-reference examples plus an anti-pattern list.

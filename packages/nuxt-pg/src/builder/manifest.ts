@@ -3,7 +3,7 @@ import { relative, resolve, sep } from 'node:path'
 import { addTemplate, useLogger } from '@nuxt/kit'
 import type { Nuxt } from 'nuxt/schema'
 import { parsePgEntities } from '@opencowstudio/pg-core/builder'
-import type { PgConfigMetadata, PgEntityMetadata } from '@opencowstudio/pg-core'
+import type { PgConfigMetadata, EntityMetadata } from '@opencowstudio/pg-core'
 import { toTsLiteral } from './codegen'
 import { parsePgConfig } from './pg-config-parser'
 import { findPgConfigFile, scanEntityPaths } from './scanner'
@@ -43,7 +43,7 @@ export interface PgEntityImportMetadata {
  *
  * @param entities The resolved entity metadata.
  */
-export function collectPgEntityImports(entities: PgEntityMetadata[]): PgEntityImportMetadata[] {
+export function collectPgEntityImports(entities: EntityMetadata[]): PgEntityImportMetadata[] {
   const byModule = new Map<string, string[]>()
 
   for (const { modulePath, className } of entities) {
@@ -143,7 +143,7 @@ export function registerPgManifest(nuxt: Nuxt, configFile: string): string {
 
 /**
  * Scan the entity source files, resolve every discovered entity class into a
- * `PgEntityMetadata` by parsing its decorators statically (no module import,
+ * `EntityMetadata` by parsing its decorators statically (no module import,
  * no class instantiation), and bake that typed collection into a server-only
  * manifest at build time.
  *
@@ -176,7 +176,7 @@ export async function registerPgEntityManifest(nuxt: Nuxt): Promise<string> {
   // Each entity also records its class name and the module it is declared in,
   // expressed relative to the Nuxt root (with a leading `/` and POSIX
   // separators) so the runtime can resolve it through `import.meta.glob`.
-  const entities: PgEntityMetadata[] = parsePgEntities(files, {
+  const entities: EntityMetadata[] = parsePgEntities(files, {
     skipInvalid: true,
     resolveModulePath: file => `/${relative(nuxt.options.rootDir, file).split(sep).join('/')}`,
   })

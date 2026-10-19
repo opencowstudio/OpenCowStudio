@@ -25,8 +25,9 @@ import { SchemaSync } from './schema-sync'
 import { PgStore } from './store-pg'
 import { PgTableRepository } from './table-repository'
 import type { PgDataSourceManager } from './datasource'
-import type { PgFilterCondition } from './filter'
-import type { PgEntityMetadata } from '../shared/types.ts'
+import type { FilterCondition } from './filter'
+import type { SortCondition } from './sort'
+import type { EntityMetadata } from '../shared/types.ts'
 
 /**
  * Entity operation contract: the common CRUD surface for a single entity.
@@ -48,6 +49,24 @@ export interface PgEntityRepository<T, K extends string = string> {
   findById(id: K): Promise<T | null>
 
   /**
+   * Return a set of entities, optionally narrowed and ordered.
+   *
+   * `size` is how many entities to read and `from` the position of the first
+   * one; both are required and range-checked by the implementation: a `size`
+   * outside `(0, 1000)` falls back to a page of 100, and a `from` outside
+   * `[0, 100000)` falls back to the first entity. `filter` and `sort` are
+   * optional — a filter names its column by property key (`createdAt`) or by
+   * column name (`created_at`) — and a `from` past the last row yields an empty
+   * list.
+   */
+  findMany(
+    size: number,
+    from: number,
+    filter?: FilterCondition | null,
+    sort?: SortCondition | null,
+  ): Promise<T[]>
+
+  /**
    * Return how many entities match `filter`, or every entity when it is
    * omitted.
    *
@@ -55,7 +74,7 @@ export interface PgEntityRepository<T, K extends string = string> {
    * (`created_at`), so it can be written against the entity shape; no match
    * counts `0` instead of reporting a miss.
    */
-  count(filter?: PgFilterCondition | null): Promise<number>
+  count(filter?: FilterCondition | null): Promise<number>
 }
 
 /**
@@ -101,7 +120,7 @@ const repositories = new Map<PgEntityClass, PgEntityRepository<unknown>>()
  * @throws When the type map carries no class for `entity.className`, i.e. the
  *         type map and the metadata do not come from the same scan.
  */
-function repositoryKey(entity: PgEntityMetadata, entityTypes: PgEntityTypeMap): PgEntityClass {
+function repositoryKey(entity: EntityMetadata, entityTypes: PgEntityTypeMap): PgEntityClass {
   const entityClass = entityTypes[entity.className]
 
   if (!entityClass) {
@@ -152,7 +171,7 @@ export class PgRepositoryManager {
    * @param entity The resolved entity metadata to build the repository from.
    * @returns The repository of the entity, backed by its plain table.
    */
-  createRepository<T>(entity: PgEntityMetadata): PgEntityRepository<T> {
+  createRepository<T>(entity: EntityMetadata): PgEntityRepository<T> {
     const dataSource = this.dataSources.get(entity.dbName)
     const store = new PgStore<T>(entity, dataSource)
 
@@ -181,7 +200,7 @@ export class PgRepositoryManager {
    *   generated manifest's `pgEntitiesTypeMap`.
    */
   async createRepositories(
-    entities: PgEntityMetadata[],
+    entities: EntityMetadata[],
     entityTypes: PgEntityTypeMap,
   ): Promise<void> {
     const schemaSync = new SchemaSync(this.dataSources)

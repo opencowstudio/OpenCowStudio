@@ -10,7 +10,7 @@ vi.mock('@nuxt/kit', () => ({
 }))
 
 import { addTemplate } from '@nuxt/kit'
-import type { PgEntityMetadata } from '@opencowstudio/pg-core'
+import type { EntityMetadata } from '@opencowstudio/pg-core'
 import {
   collectPgEntityImports,
   registerPgEntityManifest,
@@ -113,8 +113,8 @@ describe('registerPgEntityManifest', () => {
 
 describe('collectPgEntityImports', () => {
   /** Build the minimal metadata the grouping logic reads. */
-  function entity(className: string, modulePath: string): PgEntityMetadata {
-    return { className, modulePath } as PgEntityMetadata
+  function entity(className: string, modulePath: string): EntityMetadata {
+    return { className, modulePath } as EntityMetadata
   }
 
   it('groups the class names declared in the same module', () => {

@@ -48,7 +48,7 @@ describe('SchemaSync.getColumnMismatches', () => {
     ])
 
     const definitions = [
-      // The key column is reported by the catalog but not a PgColumnMetadata.
+      // The key column is reported by the catalog but not a ColumnMetadata.
       definition('id', 'int8', "nextval('sample_id_seq'::regclass)"),
       definition('name', 'text', "''::text"),
       definition('label', 'text', "'hello'::text"),

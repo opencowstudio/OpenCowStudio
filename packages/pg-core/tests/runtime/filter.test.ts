@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { FilterBuilder } from '../../src'
-import type { PgFilterCondition } from '../../src'
+import type { FilterCondition } from '../../src'
 
 // Guards the contract documented on `runtime/filter.ts`: `FilterBuilder` is the
 // single entry point, each shape has a chainable immutable builder, and `kind`
@@ -162,8 +162,8 @@ describe('FilterBuilder', () => {
     expect(built.values).not.toBe(builder.build().values)
   })
 
-  it('narrows a PgFilterCondition on its kind', () => {
-    const conditions: PgFilterCondition[] = [
+  it('narrows a FilterCondition on its kind', () => {
+    const conditions: FilterCondition[] = [
       FilterBuilder.equals('name', 'ann').build(),
       FilterBuilder.match('name', 'ann%').build(),
       FilterBuilder.anyOf('role', ['admin']).build(),

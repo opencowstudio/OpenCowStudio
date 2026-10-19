@@ -13,11 +13,11 @@ application.
   (`pg.manifest.ts`), so credentials never reach the client bundle.
 - At build time it scans the entity source files (`**/entities/**/*.ts` relative
   to the Nuxt root), resolves every discovered entity class into a
-  `PgEntityMetadata` (validated, defaulted and normalised), logs the total number
+  `EntityMetadata` (validated, defaulted and normalised), logs the total number
   of scanned entities and each resolved table, and bakes the typed collection
   into a **server-only** manifest (`pg.entities.manifest.ts`).
 - At runtime a Nitro plugin imports both typed manifests directly
-  (`PgConfigMetadata` and `PgEntityMetadata[]`) and, when a configuration is
+  (`PgConfigMetadata` and `EntityMetadata[]`) and, when a configuration is
   present, instantiates a `PgDataSourceManager` from
   `@opencowstudio/pg-core`.
 

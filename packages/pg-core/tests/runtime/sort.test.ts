@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { SortBuilder } from '../../src'
-import type { PgSortCondition } from '../../src'
+import type { SortCondition } from '../../src'
 
 // Guards the contract documented on `runtime/sort.ts`: `SortBuilder` is the
 // single entry point, each shape has a chainable immutable builder, `name` is
@@ -83,8 +83,8 @@ describe('SortBuilder', () => {
     expect(builtMulti.sorts).not.toBe(multiBuilder.build().sorts)
   })
 
-  it('narrows a PgSortCondition on its kind', () => {
-    const conditions: PgSortCondition[] = [
+  it('narrows a SortCondition on its kind', () => {
+    const conditions: SortCondition[] = [
       SortBuilder.column('name').build(),
       SortBuilder.multiColumn().desc('score').asc('name').build(),
     ]

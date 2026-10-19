@@ -32,7 +32,7 @@ out of the runtime bundle. These rules are enforced by
   types (`PgEntityOptions`, `PgKeyOptions`, `PgColumnOptions`, `PgIndexOptions`) in
   `builder/decorators.ts`. Table indexes are declared through the `indexes` option of
   `@PgEntity`, not through a separate decorator.
-- The shared `PgColumnType` primitive along with the raw/metadata shapes in
+- The shared `ColumnType` primitive along with the raw/metadata shapes in
   `shared/types.ts`.
 - Naming helpers in `shared/naming.ts` that convert between a JavaScript name
   and its PostgreSQL counterpart — `camelToSnake`, `snakeToCamel`,
@@ -40,15 +40,15 @@ out of the runtime bundle. These rules are enforced by
 - A build-time metadata pipeline (`builder/parser.ts`, exported from
   `@opencowstudio/pg-core/builder`): `parsePgEntity` / `parsePgEntities`
   statically read the decorator *source* via the TypeScript compiler API and
-  return fully-resolved `PgEntityMetadata` — identifiers validated, defaults
+  return fully-resolved `EntityMetadata` — identifiers validated, defaults
   applied, boolean options type-checked.
 - Typed datasource configuration metadata (`PgConfigMetadata`).
 - Connection-pool routing & multi-database registry
   (`runtime/datasource.ts`: `PgDataSource`, `PgDataSourceManager`).
 - The entity operation contract (`runtime/repository.ts`):
   `PgEntityRepository<T, K>` with the `insert` / `update` / `delete` /
-  `findById` / `count` surface, where `K` is the primary-key value type and the
-  key property is `id`.
+  `findById` / `findMany` / `count` surface, where `K` is the primary-key value
+  type and the key property is `id`.
 - The repository registry (`runtime/repository.ts`): `PgRepositoryManager` builds
   and registers one repository per scanned entity, and `PgRepositories.get`
   resolves a registered repository from its entity class.

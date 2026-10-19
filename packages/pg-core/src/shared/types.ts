@@ -4,22 +4,22 @@
 // This module holds the metadata type definitions produced by the builder
 // parser (`builder/parser.ts`), plus the datasource configuration metadata:
 //
-//   * Entity metadata    — `PgEntityMetadata` / `PgKeyMetadata` /
-//     `PgColumnMetadata` / `PgIndexMetadata`: the validated, defaulted and
+//   * Entity metadata    — `EntityMetadata` / `KeyMetadata` /
+//     `ColumnMetadata` / `IndexMetadata`: the validated, defaulted and
 //     normalised form produced by `parsePgEntity` / `parsePgEntities`.
 //
 //   * Configuration metadata (`PgConfigMetadata`, …) describes the datasource
 //     definition and is independent of the entity pipeline.
 //
 // The decorator *option* types (`PgEntityOptions`, …) live in
-// `builder/decorators.ts`; the shared `PgColumnType` primitive is defined here
+// `builder/decorators.ts`; the shared `ColumnType` primitive is defined here
 // and re-imported by that module (type-only).
 // ---------------------------------------------------------------------------
 
 // === Column primitives =====================================================
 
 /** Logical SQL column types. */
-export type PgColumnType =
+export type ColumnType =
   | 'BIGINT'
   | 'INT'
   | 'DOUBLE'
@@ -39,12 +39,12 @@ export type PgColumnType =
  * JSON types fall back to `null` when the option is omitted; otherwise the
  * column falls back to its type's zero value (`0` / `false` / `''`).
  */
-export type PgColumnDefault = unknown
+export type ColumnDefault = unknown
 
 // === Entity metadata =======================================================
 
 /** Metadata stored for each index declared via `PgEntityOptions.indexes`. */
-export interface PgIndexMetadata {
+export interface IndexMetadata {
   /** list of column names that form the index (resolved snake_case names) */
   columns: string[]
   /** whether the index is unique */
@@ -54,7 +54,7 @@ export interface PgIndexMetadata {
 }
 
 /** Metadata stored on a class by @PgEntity */
-export interface PgEntityMetadata {
+export interface EntityMetadata {
   /** the entity class name, as declared in its source file (e.g. `User`) */
   className: string
   /**
@@ -72,29 +72,29 @@ export interface PgEntityMetadata {
   createTableAuto: boolean
   addColumnAuto: boolean
   createIndexAuto: boolean
-  indexes: PgIndexMetadata[]
+  indexes: IndexMetadata[]
   /** the single primary/unique key declared on the class (exactly one @PgKey required) */
-  key: PgKeyMetadata
-  columns: PgColumnMetadata[]
+  key: KeyMetadata
+  columns: ColumnMetadata[]
 }
 
 /** Metadata stored for each @PgKey-decorated property */
-export interface PgKeyMetadata {
+export interface KeyMetadata {
   propertyKey: string
   column: string
   generated: boolean
   comment: string
-  columnType: PgColumnType
+  columnType: ColumnType
 }
 
 /** Metadata stored for each @PgColumn-decorated property */
-export interface PgColumnMetadata {
+export interface ColumnMetadata {
   propertyKey: string
   column: string
   comment: string
-  columnType: PgColumnType
+  columnType: ColumnType
   /** normalised default value, resolved from PgColumnOptions.default */
-  default: PgColumnDefault
+  default: ColumnDefault
 }
 
 // === Configuration metadata =================================================

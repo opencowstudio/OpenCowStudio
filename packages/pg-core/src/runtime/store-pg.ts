@@ -15,22 +15,22 @@
 // The four statements the store needs — insert, full-record update, delete and
 // the primary-key lookup — are built once from the entity metadata by the
 // constructor (see `PgSqlTemplate`), so a call only binds its parameters and
-// issues a statement it already holds. The paged read and the count are the
+// issues a statement it already holds. The multi-row read and the count are the
 // exceptions: their `WHERE` / `ORDER BY` / `LIMIT` clauses depend on the options
 // of the call, so they are built per call from the same metadata.
 //
 // The store speaks rows, not entities: a row is keyed by PostgreSQL column name
-// (`PgKeyMetadata.column` / `PgColumnMetadata.column`), never by the camelCase
+// (`KeyMetadata.column` / `ColumnMetadata.column`), never by the camelCase
 // property name. Reads and writes therefore use the same shape, and mapping a
 // row to an entity is the caller's concern.
 // ---------------------------------------------------------------------------
 
 import { PgSqlTemplate } from './sql'
-import type { PgFilterCondition } from './filter'
-import type { PgSelectPageOptions } from './sql'
+import type { FilterCondition } from './filter'
+import type { SortCondition } from './sort'
 import type { StoreProxy } from './store'
 import type { PgDataSource } from './datasource'
-import type { PgEntityMetadata } from '../shared/types.ts'
+import type { EntityMetadata } from '../shared/types.ts'
 
 /**
  * PostgreSQL-backed {@link StoreProxy} for a single entity.
@@ -45,7 +45,7 @@ export class PgStore<T> implements StoreProxy<T> {
    * Entity metadata the store was built for: the database, schema, table, key
    * and columns the statements are derived from.
    */
-  private readonly metadata: PgEntityMetadata
+  private readonly metadata: EntityMetadata
 
   /**
    * Datasource of the entity's database. The store never creates or owns a
@@ -78,7 +78,7 @@ export class PgStore<T> implements StoreProxy<T> {
    * @throws When {@link PgSqlTemplate.updateRow} cannot build the `UPDATE`, i.e.
    *         the entity declares no columns to write.
    */
-  constructor(metadata: PgEntityMetadata, dataSource: PgDataSource) {
+  constructor(metadata: EntityMetadata, dataSource: PgDataSource) {
     this.metadata = metadata
     this.dataSource = dataSource
 
@@ -98,7 +98,7 @@ export class PgStore<T> implements StoreProxy<T> {
    *
    * @returns The resolved entity metadata of this store.
    */
-  getMetadata(): PgEntityMetadata {
+  getMetadata(): EntityMetadata {
     return this.metadata
   }
 
@@ -215,7 +215,7 @@ export class PgStore<T> implements StoreProxy<T> {
    * @param filter Optional filter conditions driving the `WHERE` clause.
    * @returns The number of matching rows.
    */
-  async count(filter?: PgFilterCondition | null): Promise<number> {
+  async count(filter?: FilterCondition | null): Promise<number> {
     const { sql, values } = PgSqlTemplate.selectCount(this.metadata, filter)
     const { rows } = (await this.dataSource.query(sql, values)) as {
       rows: Array<{ count: string }>
@@ -225,28 +225,42 @@ export class PgStore<T> implements StoreProxy<T> {
   }
 
   /**
-   * Return one page of the entity's rows.
+   * Return a set of the entity's rows.
    *
-   * The statement and its values come from {@link PgSqlTemplate.selectPage},
-   * which renders `options.filter` into the `WHERE` clause, `options.sort` into
-   * the `ORDER BY` clause and binds `options.limit` / `options.offset` last:
-   * statement and parameters are produced by the same walk, so the placeholders
-   * cannot drift from the value list. Only the column list comes from the
-   * metadata the store already holds, so the rows have the same shape
-   * {@link PgStore.findById} returns. The options are the only input, so the
-   * statement is built per call rather than in the constructor.
+   * The parts of the read are gathered into a {@link SelectOptions} and handed
+   * to {@link PgSqlTemplate.selectRows}, which renders `filter` into the `WHERE`
+   * clause, `sort` into the `ORDER BY` clause and binds `size` / `from` as the
+   * statement's `LIMIT` / `OFFSET` last: statement and parameters are produced
+   * by the same walk, so the placeholders cannot drift from the value list. Only
+   * the column list comes from the metadata the store already holds, so the rows
+   * have the same shape {@link PgStore.findById} returns. The arguments are the
+   * only input, so the statement is built per call rather than in the
+   * constructor.
    *
    * The read goes through `PgDataSource.query` — the master path, as the
-   * primary-key lookup and the count do — so the page and its total observe the
-   * rows this store just wrote instead of a replica that may still be lagging
-   * behind.
+   * primary-key lookup and the count do — so a multi-row read and its total
+   * observe the rows this store just wrote instead of a replica that may still be
+   * lagging behind.
    *
-   * @param options Filter, sort and paging of the page to read.
-   * @returns The rows of the page, in `sort` order; empty when the offset is
-   *          past the last row.
+   * @param size   How many rows to read, bound to `LIMIT`.
+   * @param from   Position of the first row, bound to `OFFSET`.
+   * @param filter Optional filter conditions driving the `WHERE` clause.
+   * @param sort   Optional sort condition driving the `ORDER BY` clause.
+   * @returns The rows read, in `sort` order; empty when `from` is past the last
+   *          row.
    */
-  async selectPage(options: PgSelectPageOptions): Promise<T[]> {
-    const { sql, values } = PgSqlTemplate.selectPage(this.metadata, options)
+  async findMany(
+    size: number,
+    from: number,
+    filter: FilterCondition | null = null,
+    sort: SortCondition | null = null,
+  ): Promise<T[]> {
+    const { sql, values } = PgSqlTemplate.selectRows(this.metadata, {
+      filter,
+      sort,
+      limit: size,
+      offset: from,
+    })
     const { rows } = (await this.dataSource.query(sql, values)) as { rows: T[] }
 
     return rows

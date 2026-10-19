@@ -22,18 +22,18 @@
 import type {
   PgBoolFilter,
   PgEqualsFilter,
-  PgFilterCondition,
+  FilterCondition,
   PgInFilter,
   PgMatchFilter,
   PgRangeFilter,
 } from './filter'
-import type { PgSortCondition } from './sort'
+import type { SortCondition } from './sort'
 import type {
-  PgColumnDefault,
-  PgColumnMetadata,
-  PgColumnType,
-  PgEntityMetadata,
-  PgIndexMetadata,
+  ColumnDefault,
+  ColumnMetadata,
+  ColumnType,
+  EntityMetadata,
+  IndexMetadata,
 } from '../shared/types.ts'
 
 /**
@@ -58,12 +58,12 @@ export interface PgSqlQuery {
   values: unknown[]
 }
 
-/** What {@link PgSqlTemplate.selectPage} reads a page by. */
-export interface PgSelectPageOptions {
+/** What {@link PgSqlTemplate.selectRows} reads a row set by. */
+export interface SelectOptions {
   /** Filter conditions driving the `WHERE` clause; omitted for no filter. */
-  filter?: PgFilterCondition | null
+  filter?: FilterCondition | null
   /** Sort condition driving the `ORDER BY` clause; omitted for no sort. */
-  sort?: PgSortCondition | null
+  sort?: SortCondition | null
   /** Page size, bound to `LIMIT`. */
   limit: number
   /** Row offset of the first row of the page, bound to `OFFSET`. */
@@ -78,7 +78,7 @@ export interface PgSelectPageOptions {
  * — while a statement can only reference the latter, so the map translates the
  * former to the latter. The key column is part of the map for the same reason.
  */
-function columnNameMap(metadata: PgEntityMetadata): ReadonlyMap<string, string> {
+function columnNameMap(metadata: EntityMetadata): ReadonlyMap<string, string> {
   const map = new Map<string, string>([[metadata.key.propertyKey, metadata.key.column]])
 
   for (const column of metadata.columns) map.set(column.propertyKey, column.column)
@@ -98,13 +98,13 @@ function resolveFilterColumn(name: string, columns: ReadonlyMap<string, string>)
 }
 
 /**
- * Map a logical `PgColumnType` to the PostgreSQL column type it is stored as.
+ * Map a logical `ColumnType` to the PostgreSQL column type it is stored as.
  *
  * `JSON_OBJECT` and `JSON_ARRAY` both map to `JSONB` — PostgreSQL's binary JSON
  * type. `DOUBLE` and `DATE` map to `DOUBLE PRECISION` and `TIMESTAMPTZ`, the
  * catalog shapes referenced by {@link COLUMN_DEFINITIONS}.
  */
-const COLUMN_TYPE_SQL: Record<PgColumnType, string> = {
+const COLUMN_TYPE_SQL: Record<ColumnType, string> = {
   BIGINT: 'BIGINT',
   INT: 'INTEGER',
   DOUBLE: 'DOUBLE PRECISION',
@@ -169,7 +169,7 @@ function escapeLikeValue(value: string): string {
  * it was written — the same literal PostgreSQL stores — instead of re-deriving
  * it. {@link columnDefaultClause} wraps it for the `DEFAULT` clause.
  */
-export function columnDefaultExpression(value: PgColumnDefault): string {
+export function columnDefaultExpression(value: ColumnDefault): string {
   if (value === null || value === undefined) return ''
   if (value instanceof Date) return ''
   if (typeof value === 'number') return `${value}`
@@ -186,7 +186,7 @@ export function columnDefaultExpression(value: PgColumnDefault): string {
  * `ADD COLUMN` omit it and {@link PgSqlTemplate.alterColumnDefault} drops the
  * default instead.
  */
-function columnDefaultClause(value: PgColumnDefault): string {
+function columnDefaultClause(value: ColumnDefault): string {
   const expression = columnDefaultExpression(value)
   return expression ? ` DEFAULT ${expression}` : ''
 }
@@ -214,7 +214,7 @@ const INDEX_NAME_BASE_MAX_LENGTH = 59
  * appended. Including the table keeps the name unique across the schema
  * (PostgreSQL requires index names to be unique per schema).
  */
-export function indexName(table: string, index: PgIndexMetadata): string {
+export function indexName(table: string, index: IndexMetadata): string {
   const suffix = index.gin ? 'gin' : index.unique ? 'uq' : 'idx'
   const base = [table, ...index.columns].join('_')
   return `${base.slice(0, INDEX_NAME_BASE_MAX_LENGTH)}_${suffix}`
@@ -278,7 +278,7 @@ export class PgSqlTemplate {
    *
    * @param metadata The resolved entity metadata to build the script from.
    */
-  static createTable(metadata: PgEntityMetadata): string {
+  static createTable(metadata: EntityMetadata): string {
     const tableRef = qualifyTable(metadata.schema, metadata.table)
 
     const columnDefinitions = [
@@ -329,7 +329,7 @@ export class PgSqlTemplate {
    * @param table Table the index is created on.
    * @param index The resolved index metadata to build the statement from.
    */
-  static createIndex(schema: string, table: string, index: PgIndexMetadata): string {
+  static createIndex(schema: string, table: string, index: IndexMetadata): string {
     const tableRef = qualifyTable(schema, table)
     const columns = index.gin
       ? index.columns.map(column => `${quoteIdentifier(column)} gin_trgm_ops`).join(', ')
@@ -360,7 +360,7 @@ export class PgSqlTemplate {
    * @param table Table the column is added to.
    * @param column The resolved column metadata to build the statement from.
    */
-  static addColumn(schema: string, table: string, column: PgColumnMetadata): string {
+  static addColumn(schema: string, table: string, column: ColumnMetadata): string {
     const tableRef = qualifyTable(schema, table)
     const columnRef = `${tableRef}.${quoteIdentifier(column.column)}`
 
@@ -394,7 +394,7 @@ export class PgSqlTemplate {
    * @param table Table carrying the column.
    * @param column The resolved column metadata to build the statement from.
    */
-  static alterColumnType(schema: string, table: string, column: PgColumnMetadata): string {
+  static alterColumnType(schema: string, table: string, column: ColumnMetadata): string {
     const tableRef = qualifyTable(schema, table)
     return `ALTER TABLE ${tableRef} ALTER COLUMN ${quoteIdentifier(column.column)} TYPE ${COLUMN_TYPE_SQL[column.columnType]};`
   }
@@ -417,7 +417,7 @@ export class PgSqlTemplate {
    * @param table Table carrying the column.
    * @param column The resolved column metadata to build the statement from.
    */
-  static alterColumnDefault(schema: string, table: string, column: PgColumnMetadata): string {
+  static alterColumnDefault(schema: string, table: string, column: ColumnMetadata): string {
     const tableRef = qualifyTable(schema, table)
     const expression = columnDefaultExpression(column.default)
     return expression
@@ -438,7 +438,7 @@ export class PgSqlTemplate {
    * bound positionally.
    *
    * Parameters: `$1` = the key value, `$2 … $n` = the values of
-   * {@link PgEntityMetadata.columns}, in order — one parameter per column, none
+   * {@link EntityMetadata.columns}, in order — one parameter per column, none
    * omitted.
    *
    * The statement carries no `RETURNING` clause: it reports only that the row
@@ -447,7 +447,7 @@ export class PgSqlTemplate {
    *
    * @param metadata The resolved entity metadata to build the statement from.
    */
-  static insertRow(metadata: PgEntityMetadata): string {
+  static insertRow(metadata: EntityMetadata): string {
     const tableRef = qualifyTable(metadata.schema, metadata.table)
     const columns = PgSqlTemplate.insertColumns(metadata)
     const placeholders = columns.map((_, index) => `$${index + 1}`)
@@ -469,7 +469,7 @@ export class PgSqlTemplate {
    * apart.
    *
    * Each value is looked up by PostgreSQL column name — the key through
-   * `PgKeyMetadata.column`, the columns through `PgColumnMetadata.column` — and
+   * `KeyMetadata.column`, the columns through `ColumnMetadata.column` — and
    * a column `row` does not carry is returned as `null`, so the result always
    * has exactly one entry per placeholder.
    *
@@ -477,7 +477,7 @@ export class PgSqlTemplate {
    * @param row      The record whose values are collected.
    * @returns One value per `insertRow` placeholder, in parameter order.
    */
-  static insertRowValues<T>(metadata: PgEntityMetadata, row: T): unknown[] {
+  static insertRowValues<T>(metadata: EntityMetadata, row: T): unknown[] {
     const fields = row as Record<string, unknown>
     return PgSqlTemplate.insertColumns(metadata).map(column => fields[column] ?? null)
   }
@@ -493,7 +493,7 @@ export class PgSqlTemplate {
    *
    * @param metadata The resolved entity metadata to read the column order from.
    */
-  private static insertColumns(metadata: PgEntityMetadata): string[] {
+  private static insertColumns(metadata: EntityMetadata): string[] {
     return [metadata.key.column, ...metadata.columns.map(column => column.column)]
   }
 
@@ -510,7 +510,7 @@ export class PgSqlTemplate {
    * names are quoted with `quoteIdentifier`, while the values themselves are
    * bound positionally.
    *
-   * Parameters: `$1 … $n` = the values of {@link PgEntityMetadata.columns}, in
+   * Parameters: `$1 … $n` = the values of {@link EntityMetadata.columns}, in
    * order, then `$n + 1` = the key value — the key is always the last parameter.
    *
    * The statement carries no `RETURNING` clause, matching
@@ -520,7 +520,7 @@ export class PgSqlTemplate {
    * @throws When the entity declares no columns to write, since the statement
    *         would carry an empty assignment list.
    */
-  static updateRow(metadata: PgEntityMetadata): string {
+  static updateRow(metadata: EntityMetadata): string {
     const columns = PgSqlTemplate.updateColumns(metadata)
     if (columns.length === 0) {
       throw new Error(
@@ -549,7 +549,7 @@ export class PgSqlTemplate {
    * the statement and its parameter list cannot drift apart.
    *
    * Each value is looked up by PostgreSQL column name — the columns through
-   * `PgColumnMetadata.column`, the key through `PgKeyMetadata.column` — and a
+   * `ColumnMetadata.column`, the key through `KeyMetadata.column` — and a
    * column `row` does not carry is returned as `null`, so the result always has
    * exactly one entry per placeholder.
    *
@@ -557,7 +557,7 @@ export class PgSqlTemplate {
    * @param row      The record whose values are collected.
    * @returns One value per `updateRow` placeholder, in parameter order.
    */
-  static updateRowValues<T>(metadata: PgEntityMetadata, row: T): unknown[] {
+  static updateRowValues<T>(metadata: EntityMetadata, row: T): unknown[] {
     const fields = row as Record<string, unknown>
     const columns = PgSqlTemplate.updateColumns(metadata)
 
@@ -575,7 +575,7 @@ export class PgSqlTemplate {
    *
    * @param metadata The resolved entity metadata to read the column order from.
    */
-  private static updateColumns(metadata: PgEntityMetadata): string[] {
+  private static updateColumns(metadata: EntityMetadata): string[] {
     return metadata.columns.map(column => column.column)
   }
 
@@ -596,7 +596,7 @@ export class PgSqlTemplate {
    *
    * @param metadata The resolved entity metadata to build the statement from.
    */
-  static deleteRow(metadata: PgEntityMetadata): string {
+  static deleteRow(metadata: EntityMetadata): string {
     const tableRef = qualifyTable(metadata.schema, metadata.table)
     return [
       `DELETE FROM ${tableRef}`,
@@ -624,7 +624,7 @@ export class PgSqlTemplate {
    *
    * @param metadata The resolved entity metadata to build the statement from.
    */
-  static selectRow(metadata: PgEntityMetadata): string {
+  static selectRow(metadata: EntityMetadata): string {
     const tableRef = qualifyTable(metadata.schema, metadata.table)
     const columns = [metadata.key.column, ...metadata.columns.map(column => column.column)]
 
@@ -637,10 +637,10 @@ export class PgSqlTemplate {
   }
 
   /**
-   * Build the paged read statement for an entity, with its values.
+   * Build the row-set read statement of an entity, with its values.
    *
    * Shape: `SELECT … FROM <table> [WHERE …] [ORDER BY …] LIMIT $n OFFSET $n+1`.
-   * The column list mirrors {@link PgSqlTemplate.selectRow}, so a paged read
+   * The column list mirrors {@link PgSqlTemplate.selectRow}, so a row-set read
    * returns the same row shape as the primary-key lookup. Both `filter` and
    * `sort` are optional: without a filter the `WHERE` clause is omitted, without
    * a sort — or with a multi-column sort that carries no columns — the
@@ -663,9 +663,9 @@ export class PgSqlTemplate {
    * a caller can run either one, and the count does not depend on the page size.
    *
    * @param metadata The resolved entity metadata to build the statement from.
-   * @param options  Filter, sort and paging of the page to read.
+   * @param options  Filter, sort and paging of the rows to read.
    */
-  static selectPage(metadata: PgEntityMetadata, options: PgSelectPageOptions): PgSqlQuery {
+  static selectRows(metadata: EntityMetadata, options: SelectOptions): PgSqlQuery {
     const tableRef = qualifyTable(metadata.schema, metadata.table)
     const columns = [metadata.key.column, ...metadata.columns.map(column => column.column)]
     const columnMap = columnNameMap(metadata)
@@ -696,9 +696,9 @@ export class PgSqlTemplate {
    * Build the statement counting the rows an entity holds.
    *
    * Shape: `SELECT COUNT(*) FROM <table> [WHERE …];` — the same `WHERE` clause
-   * the page statement renders, but no `ORDER BY`, `LIMIT` or `OFFSET`, so the
-   * two can be combined to report a page and the total it pages through. The
-   * filter is rendered exactly as {@link PgSqlTemplate.selectPage} renders it,
+   * the row-set statement renders, but no `ORDER BY`, `LIMIT` or `OFFSET`, so
+   * the two can be combined to report a page and the total it pages through. The
+   * filter is rendered exactly as {@link PgSqlTemplate.selectRows} renders it,
    * so its placeholders are numbered identically and the filter values apply to
    * either statement.
    *
@@ -706,7 +706,7 @@ export class PgSqlTemplate {
    * @param filter   Optional filter conditions driving the `WHERE` clause.
    * @returns The count statement and one value per placeholder.
    */
-  static selectCount(metadata: PgEntityMetadata, filter?: PgFilterCondition | null): PgSqlQuery {
+  static selectCount(metadata: EntityMetadata, filter?: FilterCondition | null): PgSqlQuery {
     const tableRef = qualifyTable(metadata.schema, metadata.table)
     const values: unknown[] = []
     const where = filter
@@ -741,7 +741,7 @@ export class PgSqlTemplate {
    * @param columns Property key to column name of the entity being read.
    */
   private static renderFilter(
-    filter: PgFilterCondition,
+    filter: FilterCondition,
     values: unknown[],
     columns: ReadonlyMap<string, string>,
   ): string | null {
@@ -896,7 +896,7 @@ export class PgSqlTemplate {
    *
    * @param sort The sort condition to render.
    */
-  private static renderSort(sort: PgSortCondition): string | null {
+  private static renderSort(sort: SortCondition): string | null {
     if (sort.kind === 'column') return `${quoteIdentifier(sort.name)} ${sort.order}`
     if (sort.sorts.length === 0) return null
 
@@ -959,7 +959,7 @@ INSERT INTO public.sql_execution_script (
    * Parameters: `$1` = schema, `$2` = table.
    *
    * `udt_name` (the underlying type, e.g. `float8`) is returned, so a caller
-   * can map a logical `PgColumnType` to the exact catalog shape.
+   * can map a logical `ColumnType` to the exact catalog shape.
    */
   static readonly COLUMN_DEFINITIONS = `
 SELECT

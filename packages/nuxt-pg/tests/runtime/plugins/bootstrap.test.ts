@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { fileURLToPath } from 'node:url'
-import type { PgConfigMetadata, PgEntityMetadata } from '@opencowstudio/pg-core'
+import type { PgConfigMetadata, EntityMetadata } from '@opencowstudio/pg-core'
 
 // The bootstrap plugin depends on the Nitro runtime and the virtual
 // `#pg-manifest` / `#pg-entities-manifest` modules that only exist at build
@@ -13,7 +13,7 @@ const bootstrapPath = fileURLToPath(
 
 function mockRuntime(
   pgConfig: PgConfigMetadata | null,
-  entities: PgEntityMetadata[] = [],
+  entities: EntityMetadata[] = [],
   entityTypes: Record<string, unknown> = {},
 ) {
   // Constructable spy standing in for the real `PgDataSourceManager`. It records
@@ -31,7 +31,7 @@ function mockRuntime(
   // the arguments handed to `createRepositories` so the call can be asserted.
   const createRepositories = vi.fn()
   const PgRepositoryManagerSpy = vi.fn().mockImplementation(function (this: {
-    createRepositories: (entities: PgEntityMetadata[], typeMap: Record<string, unknown>) => void
+    createRepositories: (entities: EntityMetadata[], typeMap: Record<string, unknown>) => void
   }) {
     this.createRepositories = createRepositories
   })
@@ -136,7 +136,7 @@ describe('bootstrap nitro plugin', () => {
         },
       },
     }
-    const entities = [{ className: 'User' } as PgEntityMetadata]
+    const entities = [{ className: 'User' } as EntityMetadata]
     const entityTypes = { User: class User {} }
 
     vi.resetModules()

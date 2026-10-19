@@ -14,7 +14,7 @@ declare module '#pg-entities-manifest' {
    * The entity metadata scanned at build time, or an empty array when no
    * entities were found.
    */
-  export const pgEntitiesMetadata: import('@opencowstudio/pg-core').PgEntityMetadata[]
+  export const pgEntitiesMetadata: import('@opencowstudio/pg-core').EntityMetadata[]
 
   /**
    * The scanned entity classes, keyed by their class name. Every value is the

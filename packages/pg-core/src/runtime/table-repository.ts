@@ -36,9 +36,58 @@
 
 import { generateId } from '@opencowstudio/core'
 import { camelToSnake, snakeToCamel, camelizeKeys, snakeizeKeys } from '../shared/naming.ts'
-import type { PgFilterCondition } from './filter'
+import type { FilterCondition } from './filter'
+import type { SortCondition } from './sort'
 import type { StoreProxy } from './store'
 import type { PgEntityRepository } from './repository'
+
+/**
+ * Page size the repository reads when the requested `size` is out of range.
+ *
+ * A read is always bounded: a caller that passes a nonsensical size (a
+ * non-number, a fraction, `0`, a negative value or one at or above
+ * {@link MAX_PAGE_SIZE}) gets this page instead of an unbounded scan.
+ */
+const DEFAULT_PAGE_SIZE = 100
+
+/** Exclusive upper bound of an accepted page size. */
+const MAX_PAGE_SIZE = 1000
+
+/** Exclusive upper bound of an accepted position of the first row. */
+const MAX_PAGE_FROM = 100_000
+
+/**
+ * Normalise a requested page size into one the store accepts.
+ *
+ * The size is how many rows the statement binds to `LIMIT`, so it must be a
+ * whole number in the open range `(0, MAX_PAGE_SIZE)`: a fraction would be
+ * rejected by PostgreSQL, and `0`, a negative value or an unbounded request
+ * would make the read meaningless. Anything outside that range is replaced by
+ * {@link DEFAULT_PAGE_SIZE} rather than reported as an error, so a caller can
+ * pass user input straight through.
+ *
+ * @param size The requested page size.
+ * @returns The size to read with — `size` itself when it is valid.
+ */
+function resolvePageSize(size: number): number {
+  return Number.isInteger(size) && size > 0 && size < MAX_PAGE_SIZE ? size : DEFAULT_PAGE_SIZE
+}
+
+/**
+ * Normalise the requested position of the first row into one the store accepts.
+ *
+ * The position is the value bound to `OFFSET`, so it must be a whole number in
+ * the range `[0, MAX_PAGE_FROM)`: a fraction would be rejected by PostgreSQL,
+ * and a negative value or a position beyond the accepted maximum (deep-offset
+ * scans are expensive) would make the read meaningless. Anything outside that
+ * range is replaced by `0` — the first row — rather than reported as an error.
+ *
+ * @param from The requested position.
+ * @returns The position to read from — `from` itself when it is valid.
+ */
+function resolvePageFrom(from: number): number {
+  return Number.isInteger(from) && from >= 0 && from < MAX_PAGE_FROM ? from : 0
+}
 
 /**
  * Apply a key-rewriting conversion to `source` and carry every untouched key
@@ -174,6 +223,42 @@ export class PgTableRepository<T> implements PgEntityRepository<T> {
   }
 
   /**
+   * Return a set of entities, optionally narrowed and ordered.
+   *
+   * `size` and `from` are normalised before the store is called, so a caller
+   * cannot ask for a page the storage layer rejects: `size` must be a whole
+   * number in the open range (0, {@link MAX_PAGE_SIZE}) and falls back to
+   * {@link DEFAULT_PAGE_SIZE} otherwise; `from` must be a whole number in the
+   * range [0, {@link MAX_PAGE_FROM}) and falls back to `0` otherwise. The filter
+   * and the sort are passed to the store as written — a filter names its column
+   * by property key or by column name, and the store resolves both against the
+   * entity metadata it holds (see `StoreProxy.findMany`).
+   *
+   * Every row the store returns is converted to an entity (see
+   * {@link PgTableRepository.toEntity}), so the caller gets entities on both
+   * sides — the same shape {@link PgTableRepository.findById} returns.
+   *
+   * @param size   How many entities to read; falls back to a page of 100 when it
+   *               is out of range.
+   * @param from   Position of the first entity; falls back to the first one when
+   *               it is out of range.
+   * @param filter Optional filter conditions driving the `WHERE` clause.
+   * @param sort   Optional sort condition driving the `ORDER BY` clause.
+   * @returns The matching entities, in `sort` order; empty when `from` is past
+   *          the last row.
+   */
+  async findMany(
+    size: number,
+    from: number,
+    filter?: FilterCondition | null,
+    sort?: SortCondition | null,
+  ): Promise<T[]> {
+    const rows = await this.store.findMany(resolvePageSize(size), resolvePageFrom(from), filter, sort)
+
+    return rows.map(row => this.toEntity(row as unknown as Record<string, unknown>))
+  }
+
+  /**
    * Count the entities matching `filter`, or all of them when it is omitted.
    *
    * The filter is passed to the store as written. Nothing is converted: a filter
@@ -187,7 +272,7 @@ export class PgTableRepository<T> implements PgEntityRepository<T> {
    * @param filter Optional filter conditions narrowing the count.
    * @returns The number of matching entities.
    */
-  async count(filter?: PgFilterCondition | null): Promise<number> {
+  async count(filter?: FilterCondition | null): Promise<number> {
     return this.store.count(filter)
   }
 
@@ -206,7 +291,7 @@ export class PgTableRepository<T> implements PgEntityRepository<T> {
    *    stamped with the current time, so the creation column cannot be written
    *    as `NULL` and cannot be set to a non-date value. A declared default that
    *    filled the column in one step earlier is therefore replaced: a `DATE`
-   *    column declares no default (see `PgColumnDefault`), and a creation stamp
+   *    column declares no default (see `ColumnDefault`), and a creation stamp
    *    is always "now" rather than a fixed literal.
    *
    * The row is mutated rather than copied, so the caller receives the very
@@ -270,7 +355,7 @@ export class PgTableRepository<T> implements PgEntityRepository<T> {
    *
    * The columns come from the entity metadata the store was built for (see
    * {@link StoreProxy.getMetadata}), so the repository still needs no metadata
-   * of its own: every declared {@link PgColumnMetadata} whose column the row
+   * of its own: every declared {@link ColumnMetadata} whose column the row
    * leaves empty receives that column's normalised `default` — the value the
    * builder derived from `@PgColumn({ default })`, which is the type's zero
    * value when the option is omitted.
@@ -279,7 +364,7 @@ export class PgTableRepository<T> implements PgEntityRepository<T> {
    * {@link PgTableRepository.preInsert} applies to `id` and `created_at` — so a
    * row may be built from a sparse record and still carry a complete, typed
    * shape. The key column takes no part: defaults are declared on
-   * {@link PgColumnMetadata} only, the key is completed by
+   * {@link ColumnMetadata} only, the key is completed by
    * {@link PgTableRepository.preInsert}.
    *
    * The row is mutated rather than copied, so the caller observes the defaults

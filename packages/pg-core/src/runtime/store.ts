@@ -2,11 +2,18 @@
 // Entity store contract (runtime)
 //
 // `StoreProxy<T>` is the data-access contract of the runtime: the row
-// primitives — insert, update, delete, a primary-key lookup, a paged read and a
-// count — for a single entity. It holds no business concern: validation,
+// primitives — insert, update, delete, a primary-key lookup, a multi-row read
+// and a count — for a single entity. It holds no business concern: validation,
 // lifecycle hooks and the pagination *policy* (which page to read, how to
 // report a total) belong to the repository layer (`runtime/repository.ts`),
 // which composes a store instead of replacing it.
+//
+// The method names are storage-agnostic on purpose, because an implementation
+// may be anything that holds the entity's rows (PostgreSQL today, a cache or a
+// key-value store later): reads are the `find*` family (`findById`, `findMany`)
+// plus `count`, writes are `insert` / `update` / `delete`. No name borrows SQL
+// vocabulary — `select` belongs to the SQL template layer (`runtime/sql.ts`),
+// not to this contract.
 //
 // The contract is split from its implementations so the storage behind it can
 // be swapped or stacked:
@@ -22,12 +29,12 @@
 //
 // Entity metadata (the `@PgColumn` column mapping in particular) is produced at
 // build time by `builder/parser.ts` and reaches the runtime as a plain
-// `PgEntityMetadata` object; this module never imports the builder layer.
+// `EntityMetadata` object; this module never imports the builder layer.
 // ---------------------------------------------------------------------------
 
-import type { PgFilterCondition } from './filter'
-import type { PgSelectPageOptions } from './sql'
-import type { PgEntityMetadata } from '../shared/types.ts'
+import type { FilterCondition } from './filter'
+import type { SortCondition } from './sort'
+import type { EntityMetadata } from '../shared/types.ts'
 
 /**
  * Data-access contract for a single entity: its row primitives.
@@ -80,22 +87,27 @@ export interface StoreProxy<T> {
    * row of the entity. The count is an aggregate, so the result is the number
    * itself rather than a row: no match counts `0` instead of reporting a miss.
    */
-  count(filter?: PgFilterCondition | null): Promise<number>
+  count(filter?: FilterCondition | null): Promise<number>
 
   /**
-   * Return one page of the entity's rows, in the order `options.sort` asks for.
+   * Return a set of the entity's rows, in the order `sort` asks for.
    *
-   * `options` carries the whole page request: the filter driving the `WHERE`
-   * clause, the sort driving `ORDER BY`, and the page size (`limit`) together
-   * with the row offset (`offset`). Filter and sort are optional — without them
-   * every row matches and the database order applies — while the two paging
-   * values are required, so the size of the page is always the caller's
-   * decision. An offset past the last row yields an empty list.
+   * The read is described by its parts rather than by an options object: how
+   * many rows to read (`size`), the position of the first row (`from`), then the
+   * optional `filter` driving the `WHERE` clause and `sort` driving `ORDER BY`.
+   * Both paging values are required, so how many rows are read is always the
+   * caller's decision; without a filter every row matches, without a sort the
+   * database order applies, and a `from` past the last row yields an empty list.
    *
    * The rows come back in the same shape {@link StoreProxy.findById} returns, so
-   * a page and a primary-key lookup can be mapped the same way.
+   * a multi-row read and a primary-key lookup can be mapped the same way.
    */
-  selectPage(options: PgSelectPageOptions): Promise<T[]>
+  findMany(
+    size: number,
+    from: number,
+    filter?: FilterCondition | null,
+    sort?: SortCondition | null,
+  ): Promise<T[]>
 
   /**
    * Return the resolved entity metadata the store was built for: the database,
@@ -106,5 +118,5 @@ export interface StoreProxy<T> {
    * repository layer, a proxy stacked on another store) can read the mapping it
    * translates against without being handed it a second time.
    */
-  getMetadata(): PgEntityMetadata
+  getMetadata(): EntityMetadata
 }

@@ -21,7 +21,7 @@ export async function setupModule(options: ModuleOptions, nuxt: Nuxt): Promise<v
 
   const resolver = createResolver(import.meta.url)
 
-  // Scan the entity source files, resolve each entity into a PgEntityMetadata,
+  // Scan the entity source files, resolve each entity into a EntityMetadata,
   // and bake the collection into a server-only manifest at build time. The
   // runtime imports the typed entity metadata directly.
   //

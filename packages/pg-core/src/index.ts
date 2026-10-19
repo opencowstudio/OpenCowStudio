@@ -30,16 +30,16 @@ export type {
 
 // Column primitives, entity metadata and configuration metadata types.
 export type {
-  PgColumnType,
-  PgColumnDefault,
-  PgEntityMetadata,
-  PgKeyMetadata,
-  PgColumnMetadata,
-  PgIndexMetadata,
-  PgPoolMetadata,
-  PgNodeMetadata,
-  PgDatabaseMetadata,
+  ColumnDefault,
+  ColumnMetadata,
+  ColumnType,
+  EntityMetadata,
+  IndexMetadata,
+  KeyMetadata,
   PgConfigMetadata,
+  PgDatabaseMetadata,
+  PgNodeMetadata,
+  PgPoolMetadata,
 } from './shared/types.ts'
 
 // === runtime ===============================================================
@@ -55,10 +55,10 @@ export { PgRepositories, PgRepositoryManager } from './runtime/repository'
 // Filter conditions (`WHERE` terms): equality, set membership, range, string
 // matching and boolean grouping, plus the factory functions that create them.
 export type {
+  FilterCondition,
   PgBoolFilter,
   PgBoolFilterInput,
   PgEqualsFilter,
-  PgFilterCondition,
   PgInFilter,
   PgInValue,
   PgInValues,
@@ -81,8 +81,8 @@ export {
 export type {
   PgColumnSort,
   PgMultiColumnSort,
-  PgSortCondition,
   PgSortOrder,
+  SortCondition,
 } from './runtime/sort'
 export { ColumnSortBuilder, MultiColumnSortBuilder, SortBuilder } from './runtime/sort'
 
@@ -96,7 +96,7 @@ export type {
 
 // SQL template catalogue (catalog introspection statements), plus the
 // statement + values pair a builder returns.
-export type { PgSelectPageOptions, PgSqlQuery } from './runtime/sql'
+export type { PgSqlQuery, SelectOptions } from './runtime/sql'
 export { DEFAULT_SCHEMA, PgSqlTemplate } from './runtime/sql'
 
 // DataSource (connection-pool routing & multi-database registry).

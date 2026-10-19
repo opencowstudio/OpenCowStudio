@@ -14,7 +14,7 @@
 // Unlike the sort conditions, these shapes overlap: a string equality and a
 // string match both carry `{ name, value }`, so no structural check can tell
 // them apart and the statement layer could not choose `=` over `LIKE`. Every
-// filter therefore carries a `kind` tag, and `PgFilterCondition` is a
+// filter therefore carries a `kind` tag, and `FilterCondition` is a
 // discriminated union narrowed on it.
 //
 // Creation goes through one entry point, `FilterBuilder`, so there is a single
@@ -141,20 +141,20 @@ export interface PgMatchFilter {
  *
  * `must` clauses are combined with `AND`, `mustNot` with `AND NOT` and
  * `should` with `OR`; an empty group contributes nothing. The members are
- * `PgFilterCondition`s, so a group can nest another group.
+ * `FilterCondition`s, so a group can nest another group.
  */
 export interface PgBoolFilter {
   readonly kind: 'bool'
   /** Clauses that must all match (`AND`). */
-  readonly must: readonly PgFilterCondition[]
+  readonly must: readonly FilterCondition[]
   /** Clauses that must all not match (`AND NOT`). */
-  readonly mustNot: readonly PgFilterCondition[]
+  readonly mustNot: readonly FilterCondition[]
   /** Clauses of which at least one must match (`OR`). */
-  readonly should: readonly PgFilterCondition[]
+  readonly should: readonly FilterCondition[]
 }
 
 /** Any filter shape, discriminated by `kind`. */
-export type PgFilterCondition =
+export type FilterCondition =
   | PgEqualsFilter
   | PgInFilter
   | PgRangeFilter
@@ -180,11 +180,11 @@ export interface PgRangeInput {
 /** Groups {@link FilterBuilder.bool} accepts as a seed; every group is optional. */
 export interface PgBoolFilterInput {
   /** Clauses that must all match (`AND`). */
-  readonly must?: readonly PgFilterCondition[]
+  readonly must?: readonly FilterCondition[]
   /** Clauses that must all not match (`AND NOT`). */
-  readonly mustNot?: readonly PgFilterCondition[]
+  readonly mustNot?: readonly FilterCondition[]
   /** Clauses of which at least one must match (`OR`). */
-  readonly should?: readonly PgFilterCondition[]
+  readonly should?: readonly FilterCondition[]
 }
 
 // === Builders ==============================================================
@@ -359,9 +359,9 @@ export class MatchFilterBuilder {
 
 /** Builder of a boolean grouping; each group appends in call order. */
 export class BoolFilterBuilder {
-  private readonly mustFilters: PgFilterCondition[]
-  private readonly mustNotFilters: PgFilterCondition[]
-  private readonly shouldFilters: PgFilterCondition[]
+  private readonly mustFilters: FilterCondition[]
+  private readonly mustNotFilters: FilterCondition[]
+  private readonly shouldFilters: FilterCondition[]
 
   constructor(input: PgBoolFilterInput = {}) {
     this.mustFilters = [...(input.must ?? [])]
@@ -370,19 +370,19 @@ export class BoolFilterBuilder {
   }
 
   /** Append clauses that must all match (`AND`). */
-  must(...filters: PgFilterCondition[]): this {
+  must(...filters: FilterCondition[]): this {
     this.mustFilters.push(...filters)
     return this
   }
 
   /** Append clauses that must all not match (`AND NOT`). */
-  mustNot(...filters: PgFilterCondition[]): this {
+  mustNot(...filters: FilterCondition[]): this {
     this.mustNotFilters.push(...filters)
     return this
   }
 
   /** Append clauses of which at least one must match (`OR`). */
-  should(...filters: PgFilterCondition[]): this {
+  should(...filters: FilterCondition[]): this {
     this.shouldFilters.push(...filters)
     return this
   }

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { PgRepositories, PgRepositoryManager } from '../../src/runtime/repository'
 import { PgSqlTemplate } from '../../src/runtime/sql'
 import { PgTableRepository } from '../../src/runtime/table-repository'
-import type { PgDataSourceManager, PgEntityMetadata } from '../../src/index'
+import type { PgDataSourceManager, EntityMetadata } from '../../src/index'
 import { column, entityWith } from '../fixtures/metadata'
 
 /**
@@ -30,7 +30,7 @@ describe('PgRepositoryManager.createRepositories', () => {
     // Building the repository of an entity also builds its UPDATE, which an
     // entity without a single column cannot produce, so this one declares a
     // column as well.
-    const second: PgEntityMetadata = {
+    const second: EntityMetadata = {
       ...entityWith([column({ column: 'name', columnType: 'TEXT', default: '' })]),
       className: 'Other',
       table: 'other',

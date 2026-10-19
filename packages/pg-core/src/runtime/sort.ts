@@ -9,7 +9,7 @@
 //                           `a ASC, b DESC`.
 //
 // Both shapes carry a `kind` tag, mirroring the filter conditions
-// (`runtime/filter.ts`), so `PgSortCondition` is a discriminated union narrowed
+// (`runtime/filter.ts`), so `SortCondition` is a discriminated union narrowed
 // on `kind` even though the two shapes happen not to overlap today.
 //
 // Creation goes through one entry point, `SortBuilder`, so there is a single
@@ -55,7 +55,7 @@ export interface PgMultiColumnSort {
 }
 
 /** Either sort condition shape, discriminated by `kind`. */
-export type PgSortCondition = PgColumnSort | PgMultiColumnSort
+export type SortCondition = PgColumnSort | PgMultiColumnSort
 
 /**
  * Builder of a single-column sort condition.

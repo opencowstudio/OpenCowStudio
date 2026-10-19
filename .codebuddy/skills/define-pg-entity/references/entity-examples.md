@@ -132,8 +132,8 @@ export class TenantSetting {
 
 | Pattern | Why it fails |
 |---|---|
-| `@PgEntity()` on a class without `@PgKey` | `declares no @PgKey field` — the parser throws |
-| Two `@PgKey` properties | `declares multiple @PgKey fields` — the parser throws |
+| `@PgEntity()` on a class without `@PgKey` | `declares no @PgKey field` — the entity is rejected |
+| Two `@PgKey` properties | `declares multiple @PgKey fields` — the entity is rejected |
 | `@PgColumn()` without `columnType` | `Missing required columnType` |
 | `@PgColumn({ columnType: 'VARCHAR' })` | Unknown logical type — use `TEXT` |
 | `@PgEntity('users')` | Argument must be an object literal |
@@ -150,5 +150,5 @@ export class TenantSetting {
 | `@PgKey() id!: number` | Parses, but the runtime key guard throws for non-string key values |
 | Entity class under `server/models/` | Only `server/entities/**/*.ts` is scanned by default |
 | Importing an entity into another entity file and expecting discovery | Only files matched by `entityPaths` are scanned |
-| Importing `@opencowstudio/pg-core/builder` in an entity file | Build-time-only entry point that pulls in the TypeScript compiler API |
-| Importing an entity from client code | Entity metadata is server-only; keep entities out of client bundles |
+| Importing `@opencowstudio/pg-core/builder` in an entity file | Build-time-only entry point; never import it in an entity |
+| Importing an entity from client code | Entities are server-only; keep them out of client bundles |

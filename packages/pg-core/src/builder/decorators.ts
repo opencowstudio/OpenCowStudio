@@ -1,5 +1,5 @@
 import { consola } from 'consola'
-import type { PgColumnType } from '../shared/types.ts'
+import type { ColumnType } from '../shared/types.ts'
 
 // ---------------------------------------------------------------------------
 // Entity decorators + their option types
@@ -13,7 +13,7 @@ import type { PgColumnType } from '../shared/types.ts'
 //
 // This module owns the decorator *option* types (`PgEntityOptions`,
 // `PgKeyOptions`, `PgColumnOptions`, `PgIndexOptions`). The shared
-// `PgColumnType` primitive lives in `shared/types.ts` alongside the metadata
+// `ColumnType` primitive lives in `shared/types.ts` alongside the metadata
 // shapes and is re-imported here (type-only), so the dependency points one way:
 // `builder/decorators.ts` -> `shared/types.ts`.
 //
@@ -42,8 +42,8 @@ export interface PgColumnOptions {
   /** column comment, default '' */
   comment?: string
   /** logical SQL column type; must be declared on every column field */
-  columnType?: PgColumnType
-  /** raw default value as a string; parsed into PgColumnMetadata.default */
+  columnType?: ColumnType
+  /** raw default value as a string; parsed into ColumnMetadata.default */
   default?: string
 }
 

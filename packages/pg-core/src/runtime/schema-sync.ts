@@ -25,7 +25,7 @@ import { generateId } from '@opencowstudio/core'
 import { PgSqlTemplate, columnDefaultExpression, indexName } from './sql'
 import { camelizeKeys } from '../shared/naming.ts'
 import type { PgDataSourceManager } from './datasource'
-import type { PgColumnMetadata, PgColumnType, PgEntityMetadata } from '../shared/types.ts'
+import type { ColumnMetadata, ColumnType, EntityMetadata } from '../shared/types.ts'
 
 // Tagged logger so the core stays framework-agnostic (no Nuxt dep).
 const logger = consola.withTag('pg-schema-sync')
@@ -67,7 +67,7 @@ export interface PgIndexDefinition {
  *
  *  * `missing` — the column is declared by the entity but absent from the table;
  *  * `type`    — the column exists but its catalog `udt_name` is not the one its
- *                logical `PgColumnType` maps to;
+ *                logical `ColumnType` maps to;
  *  * `default` — the column exists but its catalog default differs from the one
  *                the entity declares.
  */
@@ -86,7 +86,7 @@ export interface PgColumnMismatch {
   /** the declared column name the two sides are matched on */
   column: string
   /** the declared column metadata the divergence originates from */
-  columnMetadata: PgColumnMetadata
+  columnMetadata: ColumnMetadata
   /** the aspect that diverges */
   kind: PgColumnMismatchKind
   /** value declared by the entity metadata, or `null` when not applicable */
@@ -96,13 +96,13 @@ export interface PgColumnMismatch {
 }
 
 /**
- * PostgreSQL catalog type (`udt_name`) each logical `PgColumnType` is stored as.
+ * PostgreSQL catalog type (`udt_name`) each logical `ColumnType` is stored as.
  *
  * Mirrors the column types emitted by {@link PgSqlTemplate.createTable}: an
  * `INTEGER` column reports `int4`, a `DOUBLE PRECISION` one `float8`, a `JSONB`
  * one `jsonb` (for both JSON types) and a `TIMESTAMPTZ` one `timestamptz`.
  */
-const COLUMN_TYPE_UDT_NAME: Record<PgColumnType, string> = {
+const COLUMN_TYPE_UDT_NAME: Record<ColumnType, string> = {
   BIGINT: 'int8',
   INT: 'int4',
   DOUBLE: 'float8',
@@ -136,7 +136,7 @@ function bareColumnDefault(columnDefault: string | null): string | null {
  * the column declares no default (`null` / `undefined` / `Date`) and becomes
  * `null` to match the catalog's `null`.
  */
-function declaredColumnDefault(column: PgColumnMetadata): string | null {
+function declaredColumnDefault(column: ColumnMetadata): string | null {
   return columnDefaultExpression(column.default) || null
 }
 
@@ -178,7 +178,7 @@ export class SchemaSync {
    *
    * @param entity The entity metadata whose table is introspected.
    */
-  async getColumnDefinitions(entity: PgEntityMetadata): Promise<PgColumnDefinition[]> {
+  async getColumnDefinitions(entity: EntityMetadata): Promise<PgColumnDefinition[]> {
     const result = (await this.dataSources
       .get(entity.dbName)
       .query(PgSqlTemplate.COLUMN_DEFINITIONS, [entity.schema, entity.table])) as {
@@ -206,7 +206,7 @@ export class SchemaSync {
    *
    * @param entity The entity metadata whose table is introspected.
    */
-  async getIndexDefinitions(entity: PgEntityMetadata): Promise<PgIndexDefinition[]> {
+  async getIndexDefinitions(entity: EntityMetadata): Promise<PgIndexDefinition[]> {
     const result = (await this.dataSources
       .get(entity.dbName)
       .query(PgSqlTemplate.INDEX_DEFINITIONS, [entity.schema, entity.table])) as {
@@ -223,7 +223,7 @@ export class SchemaSync {
    * and reported when the two diverge:
    *
    *  * the column has no catalog definition at all (`missing`);
-   *  * its catalog `udt_name` is not the one its `PgColumnType` maps to
+   *  * its catalog `udt_name` is not the one its `ColumnType` maps to
    *    (`type`) — see {@link COLUMN_TYPE_UDT_NAME};
    *  * its catalog default differs from the declared one (`default`): the
    *    catalog cast is dropped and the declared default is rendered as the
@@ -233,9 +233,9 @@ export class SchemaSync {
    *
    * One column can yield both a `type` and a `default` mismatch, and the result
    * may hold several entries in total. Every entry carries the declared
-   * `PgColumnMetadata` it was derived from (`columnMetadata`). The comparison is
+   * `ColumnMetadata` it was derived from (`columnMetadata`). The comparison is
    * one-directional:
-   * catalog columns the entity does not declare as a `PgColumnMetadata` — the
+   * catalog columns the entity does not declare as a `ColumnMetadata` — the
    * key column in particular — are ignored. The returned array is empty when
    * every declared column is consistent.
    *
@@ -244,7 +244,7 @@ export class SchemaSync {
    * by {@link SchemaSync.getColumnDefinitions}.
    */
   getColumnMismatches(
-    entity: PgEntityMetadata,
+    entity: EntityMetadata,
     definitions: PgColumnDefinition[],
   ): PgColumnMismatch[] {
     const byName = new Map(definitions.map(definition => [definition.columnName, definition]))
@@ -309,7 +309,7 @@ export class SchemaSync {
    * @param script The complete script to record and execute; every statement
    * already ends with `;`, so it is sent as one parameterless query.
    */
-  async executeScript(entity: PgEntityMetadata, script: string): Promise<void> {
+  async executeScript(entity: EntityMetadata, script: string): Promise<void> {
     const dataSource = this.dataSources.get(entity.dbName)
 
     await dataSource.query(PgSqlTemplate.INSERT_SQL_EXECUTION_SCRIPT, [
@@ -347,7 +347,7 @@ export class SchemaSync {
    * @param definitions The catalog definition to reconcile against, as returned
    * by {@link SchemaSync.getColumnDefinitions}.
    */
-  async ensureColumns(entity: PgEntityMetadata, definitions: PgColumnDefinition[]): Promise<void> {
+  async ensureColumns(entity: EntityMetadata, definitions: PgColumnDefinition[]): Promise<void> {
     const label = `"${entity.schema}"."${entity.table}"`
     const mismatches = this.getColumnMismatches(entity, definitions)
     if (mismatches.length === 0) {
@@ -394,7 +394,7 @@ export class SchemaSync {
    *
    * @param entity The entity metadata whose indexes are ensured.
    */
-  async ensureIndex(entity: PgEntityMetadata): Promise<void> {
+  async ensureIndex(entity: EntityMetadata): Promise<void> {
     if (entity.indexes.length === 0) return
 
     const label = `"${entity.schema}"."${entity.table}"`
@@ -431,7 +431,7 @@ export class SchemaSync {
    *
    * @param entity The entity metadata whose table is ensured.
    */
-  async ensureTable(entity: PgEntityMetadata): Promise<void> {
+  async ensureTable(entity: EntityMetadata): Promise<void> {
     const label = `"${entity.schema}"."${entity.table}"`
     logger.info(`Database "${entity.dbName}": ensuring table ${label} ...`)
 
@@ -458,7 +458,7 @@ export class SchemaSync {
    *
    * @param entities The resolved entity metadata to collect schemas from.
    */
-  async ensureSchemas(entities: PgEntityMetadata[]): Promise<void> {
+  async ensureSchemas(entities: EntityMetadata[]): Promise<void> {
     // dbName -> ordered, de-duplicated schema names.
     const schemasByDatabase = new Map<string, Set<string>>()
     for (const entity of entities) {

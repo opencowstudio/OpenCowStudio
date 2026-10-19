@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { DEFAULT_SCHEMA, FilterBuilder, PgSqlTemplate, SortBuilder } from '../../src'
-import type { PgColumnMetadata, PgEntityMetadata, PgIndexMetadata } from '../../src'
+import type { ColumnMetadata, EntityMetadata, IndexMetadata } from '../../src'
 
 // Guards the invariant documented on `runtime/sql.ts`: every statement is
 // written with its own trailing semicolon, and a multi-statement script joins
@@ -10,7 +10,7 @@ import type { PgColumnMetadata, PgEntityMetadata, PgIndexMetadata } from '../../
 const SCHEMA = 'public'
 const TABLE = 'users'
 
-function column(overrides: Partial<PgColumnMetadata> = {}): PgColumnMetadata {
+function column(overrides: Partial<ColumnMetadata> = {}): ColumnMetadata {
   return {
     propertyKey: 'name',
     column: 'name',
@@ -21,11 +21,11 @@ function column(overrides: Partial<PgColumnMetadata> = {}): PgColumnMetadata {
   }
 }
 
-const PLAIN_INDEX: PgIndexMetadata = { columns: ['name'], unique: false, gin: false }
-const UNIQUE_INDEX: PgIndexMetadata = { columns: ['name'], unique: true, gin: false }
-const GIN_INDEX: PgIndexMetadata = { columns: ['name'], unique: false, gin: true }
+const PLAIN_INDEX: IndexMetadata = { columns: ['name'], unique: false, gin: false }
+const UNIQUE_INDEX: IndexMetadata = { columns: ['name'], unique: true, gin: false }
+const GIN_INDEX: IndexMetadata = { columns: ['name'], unique: false, gin: true }
 
-const ENTITY: PgEntityMetadata = {
+const ENTITY: EntityMetadata = {
   className: 'User',
   modulePath: '/server/entities/user.ts',
   dbName: 'default',
@@ -144,7 +144,7 @@ describe('PgSqlTemplate', () => {
   })
 
   it('should always close the paged statement with LIMIT and OFFSET', () => {
-    const { sql, values } = PgSqlTemplate.selectPage(ENTITY, { limit: 20, offset: 40 })
+    const { sql, values } = PgSqlTemplate.selectRows(ENTITY, { limit: 20, offset: 40 })
 
     expect(sql).toBe(
       [
@@ -179,7 +179,7 @@ describe('PgSqlTemplate', () => {
   })
 
   it('should resolve a filter name through the entity property map', () => {
-    const entity: PgEntityMetadata = {
+    const entity: EntityMetadata = {
       ...ENTITY,
       columns: [...ENTITY.columns, column({ propertyKey: 'createdAt', column: 'created_at' })],
     }
@@ -205,7 +205,7 @@ describe('PgSqlTemplate', () => {
       .build()
     const sort = SortBuilder.multiColumn().desc('age').asc('name').build()
 
-    const { sql, values } = PgSqlTemplate.selectPage(ENTITY, {
+    const { sql, values } = PgSqlTemplate.selectRows(ENTITY, {
       filter,
       sort,
       limit: 10,
@@ -223,21 +223,21 @@ describe('PgSqlTemplate', () => {
 
   it('should bind the in filter as a single array parameter', () => {
     const filter = FilterBuilder.anyOf('name', ['Bob', 'Eve']).build()
-    const { sql, values } = PgSqlTemplate.selectPage(ENTITY, { filter, limit: 10, offset: 0 })
+    const { sql, values } = PgSqlTemplate.selectRows(ENTITY, { filter, limit: 10, offset: 0 })
 
     expect(sql).toContain('WHERE "name" = ANY($1)')
     expect(values).toEqual([['Bob', 'Eve'], 10, 0])
 
     // An empty set binds an empty array, which matches nothing on the server.
     const empty = FilterBuilder.anyOf('name').build()
-    const page = PgSqlTemplate.selectPage(ENTITY, { filter: empty, limit: 10, offset: 0 })
+    const page = PgSqlTemplate.selectRows(ENTITY, { filter: empty, limit: 10, offset: 0 })
     expect(page.sql).toContain('WHERE "name" = ANY($1)')
     expect(page.values).toEqual([[], 10, 0])
   })
 
   it('should escape the LIKE metacharacters of a match filter', () => {
     const filter = FilterBuilder.match('name', '50%_off\\').build()
-    const { sql, values } = PgSqlTemplate.selectPage(ENTITY, { filter, limit: 10, offset: 0 })
+    const { sql, values } = PgSqlTemplate.selectRows(ENTITY, { filter, limit: 10, offset: 0 })
 
     expect(sql).toContain(`WHERE "name" LIKE $1 ESCAPE '\\'`)
     // `%`, `_` and `\` are escaped, then the whole value is wrapped in `%…%`.
@@ -245,7 +245,7 @@ describe('PgSqlTemplate', () => {
   })
 
   it('should omit a filter that contributes no predicate', () => {
-    const { sql } = PgSqlTemplate.selectPage(ENTITY, {
+    const { sql } = PgSqlTemplate.selectRows(ENTITY, {
       filter: FilterBuilder.bool().build(),
       limit: 10,
       offset: 0,

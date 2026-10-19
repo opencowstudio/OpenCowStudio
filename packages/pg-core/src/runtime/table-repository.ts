@@ -32,6 +32,12 @@
 // (property name <-> column name) is the store's concern, a property that maps
 // to a column of another name is handled by the two conversions above, and the
 // declared defaults are read from the store through `getMetadata`.
+//
+// The pagination policy is the other concern this layer owns: `findPage` takes a
+// 1-based page number and a page size, normalises both, reads the total first
+// and only then the page itself, translating the page number into the `from` the
+// store speaks. Both bounds are constants of this file; the store never sees a
+// page, only a position.
 // ---------------------------------------------------------------------------
 
 import { generateId } from '@opencowstudio/core'
@@ -39,22 +45,33 @@ import { camelToSnake, snakeToCamel, camelizeKeys, snakeizeKeys } from '../share
 import type { FilterCondition } from './filter'
 import type { SortCondition } from './sort'
 import type { StoreProxy } from './store'
-import type { PgEntityRepository } from './repository'
+import type { PgEntityRepository, PageResult } from './repository'
 
 /**
  * Page size the repository reads when the requested `size` is out of range.
  *
  * A read is always bounded: a caller that passes a nonsensical size (a
- * non-number, a fraction, `0`, a negative value or one at or above
- * {@link MAX_PAGE_SIZE}) gets this page instead of an unbounded scan.
+ * non-number, a fraction, `0`, a negative value or one at or above the
+ * `findMany` bound {@link MAX_PAGE_SIZE}) gets this page instead of an unbounded
+ * scan. {@link PgTableRepository.findPage} shares the fallback, applied to a size
+ * outside `[1, MAX_ITEMS_PER_PAGE]`.
  */
 const DEFAULT_PAGE_SIZE = 100
 
-/** Exclusive upper bound of an accepted page size. */
+/** Exclusive upper bound of a page size accepted by `findMany`. */
 const MAX_PAGE_SIZE = 1000
 
 /** Exclusive upper bound of an accepted position of the first row. */
 const MAX_PAGE_FROM = 100_000
+
+/** First page number {@link PgTableRepository.findPage} accepts. */
+const FIRST_PAGE_NUMBER = 1
+
+/** Last page number {@link PgTableRepository.findPage} accepts. */
+const MAX_PAGE_NUMBER = 10_000
+
+/** Largest page size {@link PgTableRepository.findPage} accepts. */
+const MAX_ITEMS_PER_PAGE = 1000
 
 /**
  * Normalise a requested page size into one the store accepts.
@@ -87,6 +104,41 @@ function resolvePageSize(size: number): number {
  */
 function resolvePageFrom(from: number): number {
   return Number.isInteger(from) && from >= 0 && from < MAX_PAGE_FROM ? from : 0
+}
+
+/**
+ * Normalise a requested page number into one the store can address.
+ *
+ * The number is 1-based and bounded: a page is translated into an `OFFSET` by
+ * `(page - 1) * size`, so a fraction, `0`, a negative value or a page beyond
+ * {@link MAX_PAGE_NUMBER} (deep offsets are expensive) would address a position
+ * the read cannot express. Anything outside `[FIRST_PAGE_NUMBER,
+ * MAX_PAGE_NUMBER]` is replaced by the first page rather than reported as an
+ * error, so a caller can pass user input straight through.
+ *
+ * @param page The requested page number.
+ * @returns The page to read — `page` itself when it is valid.
+ */
+function resolvePageNumber(page: number): number {
+  return Number.isInteger(page) && page >= FIRST_PAGE_NUMBER && page <= MAX_PAGE_NUMBER
+    ? page
+    : FIRST_PAGE_NUMBER
+}
+
+/**
+ * Normalise a requested page size into one the store accepts for paging.
+ *
+ * Unlike the open range {@link resolvePageSize} enforces for a raw
+ * `LIMIT`, a page size is inclusive at both ends: `[1, MAX_ITEMS_PER_PAGE]`, so
+ * a caller asking for {@link MAX_ITEMS_PER_PAGE} entities gets exactly that many
+ * instead of the fallback page. Anything outside that range (a fraction, `0`, a
+ * negative value, a larger one) is replaced by {@link DEFAULT_PAGE_SIZE}.
+ *
+ * @param size The requested number of entities per page.
+ * @returns The size to read with — `size` itself when it is valid.
+ */
+function resolveItemsPerPage(size: number): number {
+  return Number.isInteger(size) && size >= 1 && size <= MAX_ITEMS_PER_PAGE ? size : DEFAULT_PAGE_SIZE
 }
 
 /**
@@ -274,6 +326,63 @@ export class PgTableRepository<T> implements PgEntityRepository<T> {
    */
   async count(filter?: FilterCondition | null): Promise<number> {
     return this.store.count(filter)
+  }
+
+  /**
+   * Return one page of entities, optionally narrowed and ordered.
+   *
+   * `page` and `size` are normalised first, so a caller cannot ask for a page
+   * the storage layer cannot address: `page` must be a whole number in
+   * `[1, 10000]` and falls back to the first page otherwise, `size` must be a
+   * whole number in `[1, 1000]` and falls back to {@link DEFAULT_PAGE_SIZE}
+   * otherwise. The page number is then turned into a position — `(page - 1) *
+   * size` — because the store speaks `from` / `size`; the size itself is handed
+   * over unchanged.
+   *
+   * The store is asked for the total first (see `StoreProxy.count`), with the
+   * same filter the page is read with, so both cover one set. When that total is
+   * `0` the page holds nothing and no read is issued; otherwise the page is read
+   * (see `StoreProxy.findMany`) and every row is converted to an entity (see
+   * {@link PgTableRepository.toEntity}).
+   *
+   * The position is computed from the accepted page number, so it is not run
+   * through {@link resolvePageFrom}: the deepest page the contract allows
+   * (`page` `10000` at `size` `1000`) lies well beyond
+   * {@link MAX_PAGE_FROM}, and the page bound already keeps the offset finite.
+   *
+   * @param page   The 1-based page number to read; falls back to the first page
+   *               when it is out of range.
+   * @param size   How many entities a page holds; falls back to a page of 100
+   *               when it is out of range.
+   * @param filter Optional filter conditions driving the `WHERE` clause of the
+   *               count and of the page.
+   * @param sort   Optional sort condition driving the `ORDER BY` clause.
+   * @returns The page read, with the total of the filtered set; `items` is empty
+   *          when nothing matches or when the page is past the last one.
+   */
+  async findPage(
+    page: number,
+    size: number,
+    filter?: FilterCondition | null,
+    sort?: SortCondition | null,
+  ): Promise<PageResult<T>> {
+    const pageNumber = resolvePageNumber(page)
+    const pageSize = resolveItemsPerPage(size)
+
+    const total = await this.store.count(filter)
+
+    if (total === 0) {
+      return { total, page: pageNumber, size: pageSize, items: [] }
+    }
+
+    const rows = await this.store.findMany(pageSize, (pageNumber - 1) * pageSize, filter, sort)
+
+    return {
+      total,
+      page: pageNumber,
+      size: pageSize,
+      items: rows.map(row => this.toEntity(row as unknown as Record<string, unknown>)),
+    }
   }
 
   /**

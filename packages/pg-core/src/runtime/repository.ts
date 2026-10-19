@@ -30,6 +30,33 @@ import type { SortCondition } from './sort'
 import type { EntityMetadata } from '../shared/types.ts'
 
 /**
+ * One page of entities: the result of {@link PgEntityRepository.findPage}.
+ *
+ * `total` counts the entities the filter matched — the whole set the page was
+ * cut from, not the number of items it carries — while `page`, `size` and
+ * `items` describe the page itself: the 1-based number that was read (after
+ * normalisation), how many entities a full page holds, and the entities of that
+ * page in the requested order.
+ *
+ * `total` and `items` are read independently, so a page past the last one is
+ * reported as an empty `items` list with `total` still set rather than as a
+ * miss.
+ */
+export interface PageResult<T> {
+  /** Number of entities matching the filter, across every page. */
+  total: number
+
+  /** 1-based number of the page that was read. */
+  page: number
+
+  /** How many entities a full page holds. */
+  size: number
+
+  /** The entities of the page, in sort order; empty when the page is past the last one. */
+  items: T[]
+}
+
+/**
  * Entity operation contract: the common CRUD surface for a single entity.
  *
  * `T` is the entity class, `K` the type of its primary key value, which is
@@ -75,6 +102,36 @@ export interface PgEntityRepository<T, K extends string = string> {
    * counts `0` instead of reporting a miss.
    */
   count(filter?: FilterCondition | null): Promise<number>
+
+  /**
+   * Return one page of entities, optionally narrowed and ordered.
+   *
+   * The page is addressed by number instead of by position: `page` is 1-based
+   * — page 1 being the first `size` entities — and `size` is how many entities
+   * a page holds, so a caller pages through a result set without knowing about
+   * `LIMIT` / `OFFSET`. Both are range-checked by the implementation: `page`
+   * must be a whole number in `[1, 10000]` and falls back to the first page
+   * otherwise, `size` must be a whole number in `[1, 1000]` and falls back to a
+   * page of 100 otherwise — the same fallback policy
+   * {@link PgEntityRepository.findMany} applies, so a caller can pass user
+   * input straight through.
+   *
+   * The total is read first, with the same `filter`, and the page itself is read
+   * only when that total is above zero; a filter matching nothing therefore
+   * yields an empty page without a second round trip. A page past the last one
+   * is reported as an empty `items` list with the total still set.
+   *
+   * `filter` names its column by property key (`createdAt`) or by column name
+   * (`created_at`), exactly as in {@link PgEntityRepository.findMany} and
+   * {@link PgEntityRepository.count}, so the total and the page always cover the
+   * same set.
+   */
+  findPage(
+    page: number,
+    size: number,
+    filter?: FilterCondition | null,
+    sort?: SortCondition | null,
+  ): Promise<PageResult<T>>
 }
 
 /**

@@ -47,8 +47,10 @@ out of the runtime bundle. These rules are enforced by
   (`runtime/datasource.ts`: `PgDataSource`, `PgDataSourceManager`).
 - The entity operation contract (`runtime/repository.ts`):
   `PgEntityRepository<T, K>` with the `insert` / `update` / `delete` /
-  `findById` / `findMany` / `count` surface, where `K` is the primary-key value
-  type and the key property is `id`.
+  `findById` / `findMany` / `count` / `findPage` surface, where `K` is the
+  primary-key value type and the key property is `id`. Paged reads answer with a
+  `PageResult<T>` — the total of the filtered set, the page number, the page size and
+  the entities of the page.
 - The repository registry (`runtime/repository.ts`): `PgRepositoryManager` builds
   and registers one repository per scanned entity, and `PgRepositories.get`
   resolves a registered repository from its entity class.

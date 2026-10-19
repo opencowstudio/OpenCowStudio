@@ -44,9 +44,14 @@ export type {
 
 // === runtime ===============================================================
 
-// Entity operation contract (CRUD), plus the class/type-map shapes the
-// repository registry is keyed by.
-export type { PgEntityClass, PgEntityRepository, PgEntityTypeMap } from './runtime/repository'
+// Entity operation contract (CRUD + paging), the page a paged read returns,
+// plus the class/type-map shapes the repository registry is keyed by.
+export type {
+  PageResult,
+  PgEntityClass,
+  PgEntityRepository,
+  PgEntityTypeMap,
+} from './runtime/repository'
 
 // Repository registry (one repository per scanned entity), plus the read-side
 // service that resolves a repository from its entity class.

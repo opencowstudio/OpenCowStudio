@@ -27,13 +27,16 @@
 //   FilterBuilder.bool().must(...).mustNot(...).should(...).build()
 //
 // Each shape has its own builder. Column names are fixed at construction (the
-// only immutable part), while every other setting is mutable: the chainable
-// methods update the builder in place and return it, so a value, a bound or a
-// group can be re-set without constructing another builder. `build()` snapshots
-// the current state into a plain data object: no `pg` import, no SQL and no
+// only immutable part) and are validated with `assertValidPgName` as they enter
+// the builder, while every other setting is mutable: the chainable methods
+// update the builder in place and return it, so a value, a bound or a group can
+// be re-set without constructing another builder. `build()` snapshots the
+// current state into a plain data object: no `pg` import, no SQL and no
 // behaviour — rendering a clause belongs to the statement layer
 // (`runtime/sql.ts`).
 // ---------------------------------------------------------------------------
+
+import { assertValidPgName } from '../shared/naming.ts'
 
 /** Value a range bound can hold: a number or a date. */
 export type PgRangeValue = number | Date
@@ -148,13 +151,16 @@ export interface PgBoolFilterInput {
 /**
  * Builder of an equality filter.
  *
- * `name` is fixed at construction; the compared value can be replaced in place.
+ * `name` is fixed at construction and validated with `assertValidPgName`; the
+ * compared value can be replaced in place.
  */
 export class EqualsFilterBuilder {
   constructor(
     private readonly name: string,
     private currentValue: unknown,
-  ) {}
+  ) {
+    assertValidPgName(name, 'filter column', 'FilterBuilder')
+  }
 
   /** Compare the column to another value. */
   value(value: unknown): this {
@@ -168,7 +174,11 @@ export class EqualsFilterBuilder {
   }
 }
 
-/** Builder of a set filter; values apply in insertion order. */
+/**
+ * Builder of a set filter; values apply in insertion order.
+ *
+ * `name` is fixed at construction and validated with `assertValidPgName`.
+ */
 export class InFilterBuilder {
   private readonly currentValues: unknown[]
 
@@ -176,6 +186,7 @@ export class InFilterBuilder {
     private readonly name: string,
     values: readonly unknown[] = [],
   ) {
+    assertValidPgName(name, 'filter column', 'FilterBuilder')
     this.currentValues = [...values]
   }
 
@@ -210,8 +221,9 @@ interface RangeState {
 /**
  * Builder of a range filter, one operator call per bound.
  *
- * The state object is mutable so a bound (or its operator) can be re-set in
- * place; the builder itself stays the same instance throughout the chain.
+ * `name` is fixed at construction and validated with `assertValidPgName`. The
+ * state object is mutable so a bound (or its operator) can be re-set in place;
+ * the builder itself stays the same instance throughout the chain.
  */
 export class RangeFilterBuilder {
   private readonly state: RangeState
@@ -220,6 +232,8 @@ export class RangeFilterBuilder {
     private readonly name: string,
     input: PgRangeInput = {},
   ) {
+    assertValidPgName(name, 'filter column', 'FilterBuilder')
+
     const minValue = input.minValue ?? null
     const maxValue = input.maxValue ?? null
     const gt = minValue !== null && (input.gt ?? false)
@@ -278,13 +292,16 @@ export class RangeFilterBuilder {
 /**
  * Builder of a string matching filter.
  *
- * `name` is fixed at construction; the pattern can be replaced in place.
+ * `name` is fixed at construction and validated with `assertValidPgName`; the
+ * pattern can be replaced in place.
  */
 export class MatchFilterBuilder {
   constructor(
     private readonly name: string,
     private currentValue: string,
-  ) {}
+  ) {
+    assertValidPgName(name, 'filter column', 'FilterBuilder')
+  }
 
   /** Match the column against another pattern. */
   value(value: string): this {
@@ -342,6 +359,9 @@ export class BoolFilterBuilder {
 /**
  * Entry point for creating filter conditions. Not instantiated: the static
  * methods start a builder for the shape being created.
+ *
+ * The column name is validated with `assertValidPgName` by every builder that
+ * takes one, so an illegal name is rejected before a condition exists.
  */
 export class FilterBuilder {
   /** Start an equality filter: `column = value`. */

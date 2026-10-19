@@ -11,8 +11,12 @@
 //
 // `shared/` is the only layer `builder/` and `runtime/` may both import from
 // (see tests/architecture.test.ts), so the convention can only be defined once
-// — here. The module stays dependency-free on purpose: no `typescript`, no
-// `pg`.
+// — here. The module stays free of `typescript` and `pg` on purpose; the only
+// dependency is `consola`, for the diagnostics of {@link assertValidPgName}.
+//
+// The same reasoning puts the identifier check here: a schema, table or column
+// name is a naming concern, and both the builder (before it records the name)
+// and any other layer may validate one without pulling in the build-time parser.
 //
 // The two directions are halves of one convention rather than exact inverses:
 // `camelToSnake` lowercases its input, so the original casing of a run of
@@ -20,6 +24,11 @@
 // `httpServer`). The invariant that does hold is the snake-to-camel one: for a
 // snake_case name `s`, `camelToSnake(snakeToCamel(s)) === s`.
 // ---------------------------------------------------------------------------
+
+import { consola } from 'consola'
+
+/** Tagged logger so the core stays framework-agnostic (no Nuxt dep). */
+const logger = consola.withTag('pg-naming')
 
 /**
  * Convert a camelCase name (typically a field name) to snake_case.
@@ -108,4 +117,35 @@ export function snakeizeKeys<T>(row: Record<string, unknown>): T {
   }
 
   return result as T
+}
+
+// === Name validation =======================================================
+
+/**
+ * Allowed pattern for a PostgreSQL name: the characters `a-zA-Z0-9_` only.
+ *
+ * Every schema, table and column name parsed by the builder is checked against
+ * this pattern before any metadata object is built.
+ */
+const NAME_RE = /^[a-zA-Z0-9_]+$/
+
+/**
+ * Validate that `name` is a legal PostgreSQL name.
+ *
+ * Only the characters `a-zA-Z0-9_` are allowed. A non-compliant name is
+ * rejected (logged + thrown), so no metadata object is ever built from an
+ * invalid schema, table or column name.
+ *
+ * @param name The name to validate.
+ * @param kind The kind of name — `schema`, `table`, `column`, … — used in the
+ * diagnostic message.
+ * @param context Where the name was declared (the entity / column it belongs
+ * to), used in the diagnostic message.
+ */
+export function assertValidPgName(name: string, kind: string, context: string): void {
+  if (!NAME_RE.test(name)) {
+    const message = `Invalid ${kind} "${name}" for ${context}: only characters [a-zA-Z0-9_] are allowed.`
+    logger.error(message)
+    throw new Error(message)
+  }
 }

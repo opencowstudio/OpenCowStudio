@@ -1,7 +1,7 @@
 import ts from 'typescript'
 import { normalize } from 'node:path'
 import { consola } from 'consola'
-import { camelToSnake } from '../shared/naming.ts'
+import { assertValidPgName, camelToSnake } from '../shared/naming.ts'
 import type {
   PgColumnOptions,
   PgEntityOptions,
@@ -566,35 +566,6 @@ function positionText(node: ts.Node, sourceFile: ts.SourceFile): string {
 
 /** Database column name used for every entity's primary key. */
 const KEY_COLUMN = 'id'
-
-/**
- * Allowed pattern for a PostgreSQL name: the characters `a-zA-Z0-9_` only.
- *
- * Every schema, table, index and column name parsed by the builder is checked
- * against this pattern before any metadata object is built.
- */
-const NAME_RE = /^[a-zA-Z0-9_]+$/
-
-/**
- * Validate that `name` is a legal PostgreSQL name.
- *
- * Only the characters `a-zA-Z0-9_` are allowed. A non-compliant name is
- * rejected (logged + thrown), so no metadata object is ever built from an
- * invalid schema, table, index or column name.
- *
- * @param name The name to validate.
- * @param kind The kind of name — `schema`, `table`, `index`, `column`, … — used
- * in the diagnostic message.
- * @param context Where the name was declared (the entity / column it belongs
- * to), used in the diagnostic message.
- */
-export function assertValidPgName(name: string, kind: string, context: string): void {
-  if (!NAME_RE.test(name)) {
-    const message = `Invalid ${kind} "${name}" for ${context}: only characters [a-zA-Z0-9_] are allowed.`
-    logger.error(message)
-    throw new Error(message)
-  }
-}
 
 /**
  * Resolve and validate the table's index declarations read from the `indexes`

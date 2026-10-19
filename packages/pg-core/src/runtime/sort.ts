@@ -22,11 +22,15 @@
 // — and the builders are mutable: `.asc()` / `.desc()` / `.order()` and
 // `.asc(name)` / `.desc(name)` / `.add()` change the builder in place and return
 // it, so an existing builder can be adjusted without constructing another one.
-// `name` is always required; the direction defaults to `ASC`. `build()` snapshots
-// the current state into a plain data object: no `pg` import, no SQL and no
-// behaviour — rendering a clause belongs to the statement layer
+// `name` is always required and is validated with `assertValidPgName` when it
+// enters a builder, so a sort can never carry a column name the statement layer
+// would embed into SQL unchecked; the direction defaults to `ASC`. `build()`
+// snapshots the current state into a plain data object: no `pg` import, no SQL
+// and no behaviour — rendering a clause belongs to the statement layer
 // (`runtime/sql.ts`).
 // ---------------------------------------------------------------------------
+
+import { assertValidPgName } from '../shared/naming.ts'
 
 /** Sort direction of an `ORDER BY` term. */
 export type PgSortOrder = 'ASC' | 'DESC'
@@ -53,7 +57,14 @@ export interface PgMultiColumnSort {
 /** Either sort condition shape, discriminated by `kind`. */
 export type PgSortCondition = PgColumnSort | PgMultiColumnSort
 
-/** Builder of a single-column sort condition. */
+/**
+ * Builder of a single-column sort condition.
+ *
+ * The column name is validated with `assertValidPgName` as it enters the
+ * builder, so every `ColumnSortBuilder` — created through `SortBuilder.column`
+ * or by a `MultiColumnSortBuilder` — carries a legal PostgreSQL name. The
+ * direction defaults to `ASC`.
+ */
 export class ColumnSortBuilder {
   private sortOrder: PgSortOrder
 
@@ -61,6 +72,7 @@ export class ColumnSortBuilder {
     private readonly name: string,
     order: PgSortOrder = 'ASC',
   ) {
+    assertValidPgName(name, 'sort column', 'SortBuilder')
     this.sortOrder = order
   }
 
@@ -132,7 +144,12 @@ export class MultiColumnSortBuilder {
  * methods start a builder for the shape being created.
  */
 export class SortBuilder {
-  /** Start a single-column sort; the direction defaults to `ASC`. */
+  /**
+   * Start a single-column sort; the direction defaults to `ASC`.
+   *
+   * `name` is validated with `assertValidPgName`, so an illegal column name is
+   * rejected here instead of reaching the statement layer.
+   */
   static column(name: string, order: PgSortOrder = 'ASC'): ColumnSortBuilder {
     return new ColumnSortBuilder(name, order)
   }

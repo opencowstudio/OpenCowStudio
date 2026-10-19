@@ -15,8 +15,11 @@ export {
   parsePgColumn,
   parsePgEntity,
   parsePgEntities,
-  assertValidPgName,
 } from './parser'
+
+// Identifier validation lives in `shared/` (naming concern, no parser needed);
+// it is re-exported here because the builder is what enforces it.
+export { assertValidPgName } from '../shared/naming.ts'
 export type {
   ParsePgEntityOptions,
   ParseProgramOptions,

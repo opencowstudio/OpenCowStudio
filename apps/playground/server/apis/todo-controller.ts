@@ -1,5 +1,5 @@
 import { ApiController, ApiRoute, type ApiRequestContext } from '@opencowstudio/api-core'
-import { createTodo, findTodo, listTodos } from '../utils/todos'
+import { createTodo, findTodo } from '../utils/todos'
 
 // Controller style: one class groups the routes of a resource, and the method
 // decorators declare the paths. The class is scanned at build time and
@@ -9,17 +9,12 @@ import { createTodo, findTodo, listTodos } from '../utils/todos'
 // `/ctrl/todos` is served at `/api/ctrl/todos`.
 @ApiController({ description: 'Todo resource, wired through a controller' })
 export class TodoController {
-  // A controller route always answers both POST and GET, so the two verbs share
-  // one handler and are distinguished by `context.method`.
-  @ApiRoute({ path: '/ctrl/todos', description: 'List todos on GET, create one on POST' })
-  async todos({ method, body }: ApiRequestContext): Promise<unknown> {
-    if (method === 'POST') {
-      // No h3 helper is involved: an invalid payload surfaces as a 500. Throw
-      // `{ code, message }` when you need a specific status code.
-      return createTodo(body)
-    }
-
-    return listTodos()
+  // A controller route always answers POST, so the payload travels in `body`.
+  @ApiRoute({ path: '/ctrl/todos', description: 'Create a todo' })
+  async todos({ body }: ApiRequestContext): Promise<unknown> {
+    // No h3 helper is involved: an invalid payload surfaces as a 500. Throw
+    // `{ code, message }` when you need a specific status code.
+    return createTodo(body)
   }
 
   @ApiRoute({ path: '/ctrl/todos/:id', description: 'Read one todo' })

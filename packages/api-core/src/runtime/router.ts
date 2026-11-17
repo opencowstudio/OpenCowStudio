@@ -186,7 +186,7 @@ export class ApiRouter {
    * Match a request against the route table.
    *
    * The method is case-insensitive and must be one of the route's methods
-   * (`GET` and `POST`). The path is normalised, so a trailing slash or a
+   * (`POST`). The path is normalised, so a trailing slash or a
    * duplicated separator does not affect the result.
    *
    * @returns The matched route with its decoded path parameters, or null.

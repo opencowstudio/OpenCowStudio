@@ -1,15 +1,19 @@
 import { addServerHandler, addServerImports, addServerPlugin, createResolver } from '@nuxt/kit'
 import type { Nuxt } from 'nuxt/schema'
 import type { ModuleOptions } from '../module'
-import { registerApiHandler } from './handlers'
+import { registerApiHandlers } from './handlers'
 import { registerApiManifest } from './manifest'
+
+/** The `method` accepted by Nitro's handler list (lower-case route methods). */
+type ServerHandlerMethod = Parameters<typeof addServerHandler>[0]['method']
 
 /**
  * Bootstrap the nuxt-api module at build time:
  *  1. scan the controller source files and bake the API manifest,
  *  2. register the Nitro plugin that instantiates the router,
  *  3. auto-import the injected router service in Nitro server code,
- *  4. register the single Nitro handler serving every route below the prefix.
+ *  4. register every declared route as a Nitro route, plus the catch-all
+ *     fallbacks that answer preflight and unmatched requests.
  *
  * Extracted from `defineNuxtModule`'s `setup` hook so the orchestration can be
  * unit-tested without booting a full Nuxt build. The public module entry
@@ -42,11 +46,19 @@ export async function setupModule(options: ModuleOptions, nuxt: Nuxt): Promise<v
     },
   ])
 
-  // One handler serves the whole prefix: it matches `path + method` through the
-  // router at runtime, so the HTTP entry and `ApiRouter.dispatch` run the same
-  // pipeline and an unmatched request answers a JSON 404.
-  const { routes, handler } = registerApiHandler(controllers, options.prefix!)
-  for (const route of routes) {
+  // Every declared path + method becomes its own Nitro route (so it shows up in
+  // the route table), and the catch-all answers preflight, unknown paths and
+  // other verbs through the same handler module.
+  const { routes, fallbacks, handler } = registerApiHandlers(controllers, options.prefix!)
+  for (const { route, method } of routes) {
+    addServerHandler({
+      route,
+      method: method.toLowerCase() as ServerHandlerMethod,
+      handler,
+      lazy: true,
+    })
+  }
+  for (const route of fallbacks) {
     addServerHandler({ route, handler, lazy: true })
   }
 }

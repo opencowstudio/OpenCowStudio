@@ -157,7 +157,7 @@ export function parseControllerDecorator(
  * Parse a single `@ApiRoute(...)` decorator on a controller method into one
  * resolved {@link ApiRouteMetadata} per declared path.
  *
- * Every route answers {@link DEFAULT_API_METHODS} (`GET` and `POST`); the
+ * Every route answers {@link DEFAULT_API_METHODS} (`POST`); the
  * decorator only configures paths and the description. Out-of-contract values
  * are rejected (logged + thrown), and declaring several paths yields several
  * entries sharing the handler, name and methods.

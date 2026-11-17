@@ -44,9 +44,9 @@ describe('parseApiControllers', () => {
       path: '/',
       description: 'User endpoints',
       routes: [
-        { handler: 'show', methods: ['GET', 'POST'], parameters: [], path: '/users/:id', name: 'UserController.show', description: 'Read a user' },
-        { handler: 'list', methods: ['GET', 'POST'], parameters: [], path: '/users', name: 'UserController.list', description: 'List users' },
-        { handler: 'touch', methods: ['GET', 'POST'], parameters: [], path: '/users/touch', name: 'UserController.touch', description: '' },
+        { handler: 'show', methods: ['POST'], parameters: [], path: '/users/:id', name: 'UserController.show', description: 'Read a user' },
+        { handler: 'list', methods: ['POST'], parameters: [], path: '/users', name: 'UserController.list', description: 'List users' },
+        { handler: 'touch', methods: ['POST'], parameters: [], path: '/users/touch', name: 'UserController.touch', description: '' },
       ],
     })
 
@@ -57,7 +57,7 @@ describe('parseApiControllers', () => {
       path: '/',
       description: '',
       routes: [
-        { handler: 'check', methods: ['GET', 'POST'], parameters: [], path: '/health', name: 'HealthController.check', description: '' },
+        { handler: 'check', methods: ['POST'], parameters: [], path: '/health', name: 'HealthController.check', description: '' },
       ],
     })
   })
@@ -94,17 +94,17 @@ describe('parseApiControllers', () => {
 })
 
 describe('parseApiControllers — validation', () => {
-  it('always binds a route to GET and POST', () => {
+  it('always binds a route to POST', () => {
     const file = writeSource(`
 import { ApiController, ApiRoute } from '@opencowstudio/api-core'
 
 @ApiController()
-export class BothController {
-  @ApiRoute({ path: '/both' })
+export class PostController {
+  @ApiRoute({ path: '/post' })
   handler(): void {}
 }
 `)
-    expect(parseApiControllers([file])[0]?.routes[0]?.methods).toEqual(['GET', 'POST'])
+    expect(parseApiControllers([file])[0]?.routes[0]?.methods).toEqual(['POST'])
   })
 
   it('records the injected context parameter of every route', () => {
@@ -191,7 +191,7 @@ export class DupController {
   second(): void {}
 }
 `)
-    expect(() => parseApiControllers([file])).toThrow(/Duplicate route "GET \/dup\/x"/)
+    expect(() => parseApiControllers([file])).toThrow(/Duplicate route "POST \/dup\/x"/)
   })
 
   it('rejects the same route declared by two controllers', () => {

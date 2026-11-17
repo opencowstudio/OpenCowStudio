@@ -19,21 +19,20 @@ exercised end to end:
 
 | Request | Handler |
 |---------|---------|
-| `GET /api/ctrl/todos` | `server/apis/todo-controller.ts` → `TodoController.todos` |
 | `POST /api/ctrl/todos` | `server/apis/todo-controller.ts` → `TodoController.todos` |
-| `GET /api/ctrl/todos/:id` | `server/apis/todo-controller.ts` → `TodoController.show` |
+| `POST /api/ctrl/todos/:id` | `server/apis/todo-controller.ts` → `TodoController.show` |
 
 ```bash
-curl http://localhost:3000/api/ctrl/todos
 curl -X POST http://localhost:3000/api/ctrl/todos -H 'content-type: application/json' -d '{"title":"from a controller"}'
+curl -X POST http://localhost:3000/api/ctrl/todos/1
 ```
 
 Behaviour to observe:
 
 - Routes come from `@ApiRoute({ path })` and are relative to the module's
   `prefix`; the source tree only groups controller files.
-- A controller route answers **both `GET` and `POST`**, so the verbs share one
-  handler and are distinguished by `context.method`.
+- A controller route answers **`POST` only**, so `context.method` is always
+  `POST` and the payload travels in `context.body`.
 - A controller handler is a plain class method that receives an
   `ApiRequestContext` (`params`, `query`, `headers`, `body`, `method`, `event`)
   when it declares that parameter, and is invoked without arguments when it
@@ -46,10 +45,11 @@ Behaviour to observe:
   body) instead of 404, and an invalid create payload surfaces as a JSON error.
   Throw `{ code, message }` to identify the failure.
 - A request whose path + method matches no `ApiRoute` answers
-  `{"error":{"code":404,"message":"Not Found"}}` — `PUT /api/ctrl/todos`
-  included, since routes only answer `GET` and `POST`.
+  `{"error":{"code":404,"message":"Not Found"}}` — `GET /api/ctrl/todos`
+  included, since routes only answer `POST`.
 - Any origin may call the API (`Access-Control-Allow-Origin: *`), and `OPTIONS`
   preflights are answered by the same handler.
 - **Registration**: the controller file must sit under the module's `dir`
-  (default `server/apis`); one catch-all Nitro handler serves the prefix and the
-  router matches each request at runtime.
+  (default `server/apis`). Every declared `path + method` is registered as its
+  own Nitro route (so it shows up in the server route list), and the router
+  matches each request at runtime.

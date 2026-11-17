@@ -18,12 +18,18 @@ Nuxt/Nitro application.
   `ApiRouter` from it — instantiating every controller and binding each route
   handler — and injects the router service (`runtime/utils/router.ts`):
   `useApiRouter()` is auto-imported in Nitro server code.
-- One catch-all Nitro handler (`runtime/server/api.ts`) serves the whole prefix.
-  It hands the request to `ApiRouter.dispatch`, so the HTTP entry and the unit
-  tests run **exactly the same pipeline** (`executeApiRoute`): matching, context
-  building, argument injection, response/error normalisation. Permission checks,
-  request validation and response validation belong in that pipeline and
-  therefore apply to both entries.
+- Every declared `path + method` is registered as its own Nitro route, so it
+  appears in Nitro's route table (devtools, route rules) like a file-based
+  `server/api` route. All routes point at the same handler module
+  (`runtime/server/api.ts`), which hands the request to `ApiRouter.dispatch`:
+  the HTTP entry and the unit tests run **exactly the same pipeline**
+  (`executeApiRoute`) — matching, context building, argument injection,
+  response/error normalisation. Permission checks, request validation and
+  response validation belong in that pipeline and therefore apply to both
+  entries.
+- A catch-all (`<prefix>` and `<prefix>/**`, skipped when the module is mounted
+  at `/`) answers what no declared route matched: the `OPTIONS` preflight,
+  unknown paths and other verbs.
 - A request whose `path + method` matches no `ApiRoute` answers a JSON `404`
   `ApiError`, and every response keeps the `200` status — failures travel in the
   body (`{ error: { code, message } }`), never in the status line.
@@ -65,8 +71,8 @@ export class UserController {
 }
 ```
 
-A `GET /api/users/42` request is then answered by `UserController.show` with
-`params = { id: '42' }`. Every route answers both `GET` and `POST`; a request
+A `POST /api/users/42` request is then answered by `UserController.show` with
+`params = { id: '42' }`. Every route answers `POST`; a request
 whose path + method matches no route (including other verbs) answers a `404`
 `ApiError` instead of falling through.
 

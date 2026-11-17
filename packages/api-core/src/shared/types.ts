@@ -11,12 +11,10 @@
 export const API_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const
 
 /**
- * Methods every controller route answers. `@ApiRoute` cannot override them.
- *
- * The order is the order the methods are registered in, not a routing
- * precedence: every method is matched independently.
+ * Methods every controller route answers. `@ApiRoute` cannot override them, so
+ * a controller is a collection of `POST` endpoints.
  */
-export const DEFAULT_API_METHODS = ['GET', 'POST'] as const
+export const DEFAULT_API_METHODS = ['POST'] as const
 
 /** An HTTP method a route answers. */
 export type ApiMethod = (typeof API_METHODS)[number]

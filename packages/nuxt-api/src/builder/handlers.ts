@@ -1,34 +1,47 @@
 import { createResolver, useLogger } from '@nuxt/kit'
-import { normalizeApiPath } from '@opencowstudio/api-core'
-import type { ApiControllerMetadata } from '@opencowstudio/api-core'
+import { joinApiPaths, normalizeApiPath } from '@opencowstudio/api-core'
+import type { ApiControllerMetadata, ApiMethod } from '@opencowstudio/api-core'
 
 const MODULE_NAME = '@opencowstudio/nuxt-api'
 
-/** The single Nitro handler serving the whole API surface. */
+/** One declared `path + method` pair, registered as its own Nitro route. */
+export interface ApiRouteRegistration {
+  /** Full route path, including the mount prefix. */
+  route: string
+  /** HTTP method the entry answers, upper-cased. */
+  method: ApiMethod
+}
+
+/** The Nitro handler entries produced from one scan. */
 export interface ApiHandlerRegistration {
-  /** Route patterns handed to Nitro, including the mount prefix. */
-  routes: string[]
-  /** Absolute path of the runtime handler module. */
+  /** Declared routes, each visible in Nitro's route table. */
+  routes: ApiRouteRegistration[]
+  /** Catch-all patterns serving preflight, unknown paths and other verbs. */
+  fallbacks: string[]
+  /** Absolute path of the runtime handler module shared by every entry. */
   handler: string
-  /** Number of declared path + method pairs, kept for logging. */
-  count: number
 }
 
 /**
- * Register the Nitro handler that serves every request below the mount prefix.
+ * Turn every scanned route into its own Nitro entry, plus a catch-all fallback.
  *
- * One catch-all replaces a generated module per `path + method`: the runtime
- * handler hands the request to the router, which matches it and runs the shared
+ * Every declared `path + method` is registered separately so the route shows up
+ * in Nitro's route table (devtools, `nitro.scanHandlers`, route rules) exactly
+ * like a file-based `server/api` route.
+ *
+ * All entries — declared routes and fallbacks alike — point at the same runtime
+ * module, which matches the request through the router and runs the shared
  * execution pipeline. Adding permission checks or request/response validation
- * therefore touches a single place, and a request whose `path + method` matches
- * no route still answers a JSON `404` `ApiError`.
+ * therefore still touches a single place, and a request whose `path + method`
+ * matches no route (unknown path, `PUT`, ...) is answered by the catch-all with
+ * a JSON `404` `ApiError`.
  *
  * Build-time only — this helper must never be imported from the runtime.
  *
- * @param controllers The resolved controller metadata, used for the log line.
+ * @param controllers The resolved controller metadata.
  * @param prefix Mount prefix prepended to every route.
  */
-export function registerApiHandler(
+export function registerApiHandlers(
   controllers: readonly ApiControllerMetadata[],
   prefix: string,
 ): ApiHandlerRegistration {
@@ -36,17 +49,28 @@ export function registerApiHandler(
   const resolver = createResolver(import.meta.url)
   const normalizedPrefix = normalizeApiPath(prefix)
 
-  // The bare prefix answers `/api` itself; the wildcard covers everything below.
-  const routes = normalizedPrefix === '/'
-    ? ['/', '/**']
-    : [normalizedPrefix, `${normalizedPrefix}/**`]
+  const routes: ApiRouteRegistration[] = []
+  for (const controller of controllers) {
+    for (const route of controller.routes) {
+      const fullPath = joinApiPaths(normalizedPrefix, route.path)
+      for (const method of route.methods) routes.push({ route: fullPath, method })
+    }
+  }
 
-  const count = controllers.reduce(
-    (total, controller) =>
-      total + controller.routes.reduce((sum, route) => sum + route.methods.length, 0),
-    0,
+  // Catch-all entries answer what no declared route matched: the OPTIONS
+  // preflight, unknown paths and other verbs. They are skipped when the module
+  // is mounted at the root, where a wildcard would swallow the Nuxt app.
+  const declaredPaths = new Set(routes.map(entry => entry.route))
+  const fallbacks = normalizedPrefix === '/'
+    ? []
+    : [
+        ...(declaredPaths.has(normalizedPrefix) ? [] : [normalizedPrefix]),
+        `${normalizedPrefix}/**`,
+      ]
+
+  logger.info(
+    `Registered ${routes.length} api route(s) on "${normalizedPrefix}" (fallbacks: ${fallbacks.join(', ') || 'none'})`,
   )
-  logger.info(`Serving ${count} api route(s) through the catch-all handler "${normalizedPrefix}"`)
 
-  return { routes, handler: resolver.resolve('../runtime/server/api'), count }
+  return { routes, fallbacks, handler: resolver.resolve('../runtime/server/api') }
 }

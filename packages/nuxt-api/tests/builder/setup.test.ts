@@ -29,19 +29,19 @@ vi.mock('../../src/builder/manifest', () => ({
   registerApiManifest: vi.fn(async () => ({ dst: '/virtual/api.manifest.ts', controllers: [controller] })),
 }))
 
-// Mock the handler registration: it returns the catch-all patterns plus the
-// runtime handler module that `setupModule` forwards to `addServerHandler`.
+// Mock the handler registration: it returns the declared routes (registered
+// individually) plus the catch-all fallbacks, all served by one module.
 vi.mock('../../src/builder/handlers', () => ({
-  registerApiHandler: vi.fn(() => ({
-    routes: ['/api', '/api/**'],
+  registerApiHandlers: vi.fn(() => ({
+    routes: [{ route: '/api/users/:id', method: 'GET' }],
+    fallbacks: ['/api', '/api/**'],
     handler: '/virtual/api-handler.mjs',
-    count: 1,
   })),
 }))
 
 import { addServerHandler, addServerImports, addServerPlugin } from '@nuxt/kit'
 import { registerApiManifest } from '../../src/builder/manifest'
-import { registerApiHandler } from '../../src/builder/handlers'
+import { registerApiHandlers } from '../../src/builder/handlers'
 import { setupModule } from '../../src/builder/setup'
 
 function makeNuxt(): Nuxt {
@@ -69,7 +69,7 @@ describe('setupModule', () => {
     expect(addServerHandler).not.toHaveBeenCalled()
   })
 
-  it('registers the manifest, the plugin, the import and the catch-all handler', async () => {
+  it('registers the manifest, the plugin, the import, every route and the fallbacks', async () => {
     const nuxt = makeNuxt()
     await setupModule(options, nuxt)
 
@@ -82,22 +82,33 @@ describe('setupModule', () => {
       },
     ])
 
-    expect(registerApiHandler).toHaveBeenCalledWith([controller], '/api')
-    expect(addServerHandler).toHaveBeenCalledTimes(2)
+    expect(registerApiHandlers).toHaveBeenCalledWith([controller], '/api')
+    expect(addServerHandler).toHaveBeenCalledTimes(3)
     expect(addServerHandler).toHaveBeenNthCalledWith(1, {
-      route: '/api',
+      route: '/api/users/:id',
+      method: 'get',
       handler: '/virtual/api-handler.mjs',
       lazy: true,
     })
     expect(addServerHandler).toHaveBeenNthCalledWith(2, {
+      route: '/api',
+      handler: '/virtual/api-handler.mjs',
+      lazy: true,
+    })
+    expect(addServerHandler).toHaveBeenNthCalledWith(3, {
       route: '/api/**',
       handler: '/virtual/api-handler.mjs',
       lazy: true,
     })
   })
 
-  it('still serves the prefix when nothing was scanned, so it answers 404 JSON', async () => {
+  it('still answers the prefix when nothing was scanned, so the API answers 404 JSON', async () => {
     vi.mocked(registerApiManifest).mockResolvedValueOnce({ dst: '/virtual/api.manifest.ts', controllers: [] })
+    vi.mocked(registerApiHandlers).mockReturnValueOnce({
+      routes: [],
+      fallbacks: ['/api', '/api/**'],
+      handler: '/virtual/api-handler.mjs',
+    })
 
     await setupModule(options, makeNuxt())
 

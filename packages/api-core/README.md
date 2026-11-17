@@ -38,7 +38,7 @@ out of the runtime bundle. These rules are enforced by
   `@opencowstudio/api-core/builder`): `parseApiController` / `parseApiControllers`
   statically read the decorator *source* via the TypeScript compiler API and
   return fully-resolved `ApiControllerMetadata` — defaults applied, paths
-  normalised, every route bound to both `POST` and `GET`, misplaced decorators
+  normalised, every route bound to `POST`, misplaced decorators
   and duplicate route paths rejected.
 - The runtime router (`runtime/router.ts`):
   - `compileApiPath` turns `/users/:id` into a matcher plus its parameter names.
@@ -66,7 +66,7 @@ path (relative to the mount prefix), and the class name identifies the
 controller. `@ApiController` only accepts an optional `description`.
 
 A route declares neither a method nor a name: `path` is required, every route
-answers both `POST` and `GET`, and its name is `${className}.${handler}`.
+answers `POST`, and its name is `${className}.${handler}`.
 
 Handler parameters are injected by their declared type, in declaration order.
 `ApiRequestContext` is the only injectable type today, so a method either

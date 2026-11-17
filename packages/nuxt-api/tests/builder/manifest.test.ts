@@ -98,7 +98,6 @@ describe('registerApiManifest', () => {
     expect(contents).toContain("  path: '/',")
     expect(contents).toContain("  path: '/users/:id',")
     expect(contents).toContain('  methods: [')
-    expect(contents).toContain("    'GET',")
     expect(contents).toContain("    'POST',")
     expect(contents).toContain("  handler: 'show',")
     expect(contents).toContain('  parameters: [],')

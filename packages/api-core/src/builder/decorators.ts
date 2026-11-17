@@ -25,8 +25,8 @@ export interface ApiControllerOptions {
 /**
  * Options for @ApiRoute decorator.
  *
- * A route declares neither a method nor a name: it always answers `GET` and
- * `POST`, its name is `${className}.${handler}`, and only the path(s) and the
+ * A route declares neither a method nor a name: it always answers `POST`, its
+ * name is `${className}.${handler}`, and only the path(s) and the
  * description are configurable. Declaring several paths yields one route entry
  * per path.
  */

@@ -1,6 +1,11 @@
 import { describe, it, expect, vi } from 'vitest'
 import { ApiRouter, compileApiPath } from '../../src/index.ts'
-import type { ApiControllerMetadata, ApiRequestContext, ApiRouteMetadata } from '../../src/index.ts'
+import type {
+  ApiControllerMetadata,
+  ApiRequestContext,
+  ApiRouteMetadata,
+  ApiRouteParameter,
+} from '../../src/index.ts'
 
 function controller(overrides: Partial<ApiControllerMetadata> = {}): ApiControllerMetadata {
   return {
@@ -18,16 +23,16 @@ function route(
   handler: string,
   path: string,
   name = `UserController.${handler}`,
-  injectsContext = true,
+  parameters: ApiRouteParameter[] = [{ name: 'context', source: 'context' }],
 ): ApiRouteMetadata {
-  return { handler, methods: ['GET', 'POST'], injectsContext, path, name, description: '' }
+  return { handler, methods: ['GET', 'POST'], parameters, path, name, description: '' }
 }
 
 const controllers: ApiControllerMetadata[] = [
   controller({
     routes: [
       route('show', '/users/:id'),
-      route('me', '/users/me', 'UserController.me', false),
+      route('me', '/users/me', 'UserController.me', []),
       route('create', '/users'),
     ],
   }),
@@ -222,7 +227,7 @@ describe('ApiRouter — dispatch', () => {
         controller({
           className: 'NoContextController',
           name: 'NoContextController',
-          routes: [route('capture', '/plain/:id', 'NoContextController.capture', false)],
+          routes: [route('capture', '/plain/:id', 'NoContextController.capture', [])],
         }),
       ],
       { NoContextController },
@@ -250,7 +255,7 @@ describe('ApiRouter — dispatch', () => {
         controller({
           className: 'EmptyController',
           name: 'EmptyController',
-          routes: [route('nothing', '/empty', 'EmptyController.nothing', false)],
+          routes: [route('nothing', '/empty', 'EmptyController.nothing', [])],
         }),
       ],
       { EmptyController },
@@ -272,7 +277,7 @@ describe('ApiRouter — dispatch', () => {
         controller({
           className: 'PayloadController',
           name: 'PayloadController',
-          routes: [route('payload', '/payload', 'PayloadController.payload', false)],
+          routes: [route('payload', '/payload', 'PayloadController.payload', [])],
         }),
       ],
       { PayloadController },
@@ -294,7 +299,7 @@ describe('ApiRouter — dispatch', () => {
         controller({
           className: 'MissingController',
           name: 'MissingController',
-          routes: [route('missing', '/missing', 'MissingController.missing', false)],
+          routes: [route('missing', '/missing', 'MissingController.missing', [])],
         }),
       ],
       { MissingController },
@@ -317,7 +322,7 @@ describe('ApiRouter — dispatch', () => {
         controller({
           className: 'BrokenController',
           name: 'BrokenController',
-          routes: [route('broken', '/broken', 'BrokenController.broken', false)],
+          routes: [route('broken', '/broken', 'BrokenController.broken', [])],
         }),
       ],
       { BrokenController },

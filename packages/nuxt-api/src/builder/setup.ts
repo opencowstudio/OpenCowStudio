@@ -1,18 +1,15 @@
 import { addServerHandler, addServerImports, addServerPlugin, createResolver } from '@nuxt/kit'
 import type { Nuxt } from 'nuxt/schema'
 import type { ModuleOptions } from '../module'
-import { registerApiHandlers } from './handlers'
+import { registerApiHandler } from './handlers'
 import { registerApiManifest } from './manifest'
-
-/** The `method` accepted by Nitro's handler list (lower-case route methods). */
-type ServerHandlerMethod = Parameters<typeof addServerHandler>[0]['method']
 
 /**
  * Bootstrap the nuxt-api module at build time:
  *  1. scan the controller source files and bake the API manifest,
  *  2. register the Nitro plugin that instantiates the router,
  *  3. auto-import the injected router service in Nitro server code,
- *  4. generate one Nitro route handler per declared path + method.
+ *  4. register the single Nitro handler serving every route below the prefix.
  *
  * Extracted from `defineNuxtModule`'s `setup` hook so the orchestration can be
  * unit-tested without booting a full Nuxt build. The public module entry
@@ -45,16 +42,11 @@ export async function setupModule(options: ModuleOptions, nuxt: Nuxt): Promise<v
     },
   ])
 
-  // Register every declared path + method as a real Nitro route: Nitro performs
-  // the matching (params, method, precedence) and calls the generated module,
-  // which dispatches to the controller method.
-  const registrations = registerApiHandlers(nuxt, controllers, options.prefix!)
-  for (const { route, method, handler } of registrations) {
-    addServerHandler({
-      route,
-      method: method.toLowerCase() as ServerHandlerMethod,
-      handler,
-      lazy: true,
-    })
+  // One handler serves the whole prefix: it matches `path + method` through the
+  // router at runtime, so the HTTP entry and `ApiRouter.dispatch` run the same
+  // pipeline and an unmatched request answers a JSON 404.
+  const { routes, handler } = registerApiHandler(controllers, options.prefix!)
+  for (const route of routes) {
+    addServerHandler({ route, handler, lazy: true })
   }
 }

@@ -19,7 +19,7 @@ const controller: ApiControllerMetadata = {
   description: '',
   modulePath: '/server/apis/user.ts',
   routes: [
-    { handler: 'show', methods: ['GET'], injectsContext: true, path: '/users/:id', name: 'UserController.show', description: '' },
+    { handler: 'show', methods: ['GET'], parameters: [{ name: 'context', source: 'context' }], path: '/users/:id', name: 'UserController.show', description: '' },
   ],
 }
 
@@ -29,18 +29,19 @@ vi.mock('../../src/builder/manifest', () => ({
   registerApiManifest: vi.fn(async () => ({ dst: '/virtual/api.manifest.ts', controllers: [controller] })),
 }))
 
-// Mock the handler generator: it writes templates and returns one registration
-// per route, which `setupModule` forwards to `addServerHandler`.
+// Mock the handler registration: it returns the catch-all patterns plus the
+// runtime handler module that `setupModule` forwards to `addServerHandler`.
 vi.mock('../../src/builder/handlers', () => ({
-  registerApiHandlers: vi.fn(() => [
-    { route: '/api/users/:id', method: 'GET', handler: '/virtual/api-handlers/GET.mjs' },
-    { route: '/api/users/:id', method: 'POST', handler: '/virtual/api-handlers/POST.mjs' },
-  ]),
+  registerApiHandler: vi.fn(() => ({
+    routes: ['/api', '/api/**'],
+    handler: '/virtual/api-handler.mjs',
+    count: 1,
+  })),
 }))
 
 import { addServerHandler, addServerImports, addServerPlugin } from '@nuxt/kit'
 import { registerApiManifest } from '../../src/builder/manifest'
-import { registerApiHandlers } from '../../src/builder/handlers'
+import { registerApiHandler } from '../../src/builder/handlers'
 import { setupModule } from '../../src/builder/setup'
 
 function makeNuxt(): Nuxt {
@@ -68,7 +69,7 @@ describe('setupModule', () => {
     expect(addServerHandler).not.toHaveBeenCalled()
   })
 
-  it('registers the manifest, the plugin, the import and every route handler', async () => {
+  it('registers the manifest, the plugin, the import and the catch-all handler', async () => {
     const nuxt = makeNuxt()
     await setupModule(options, nuxt)
 
@@ -81,30 +82,27 @@ describe('setupModule', () => {
       },
     ])
 
-    expect(registerApiHandlers).toHaveBeenCalledWith(nuxt, [controller], '/api')
+    expect(registerApiHandler).toHaveBeenCalledWith([controller], '/api')
     expect(addServerHandler).toHaveBeenCalledTimes(2)
     expect(addServerHandler).toHaveBeenNthCalledWith(1, {
-      route: '/api/users/:id',
-      method: 'get',
-      handler: '/virtual/api-handlers/GET.mjs',
+      route: '/api',
+      handler: '/virtual/api-handler.mjs',
       lazy: true,
     })
     expect(addServerHandler).toHaveBeenNthCalledWith(2, {
-      route: '/api/users/:id',
-      method: 'post',
-      handler: '/virtual/api-handlers/POST.mjs',
+      route: '/api/**',
+      handler: '/virtual/api-handler.mjs',
       lazy: true,
     })
   })
 
-  it('still registers the plugin and the import when nothing was scanned', async () => {
+  it('still serves the prefix when nothing was scanned, so it answers 404 JSON', async () => {
     vi.mocked(registerApiManifest).mockResolvedValueOnce({ dst: '/virtual/api.manifest.ts', controllers: [] })
-    vi.mocked(registerApiHandlers).mockReturnValueOnce([])
 
     await setupModule(options, makeNuxt())
 
     expect(addServerPlugin).toHaveBeenCalled()
     expect(addServerImports).toHaveBeenCalled()
-    expect(addServerHandler).not.toHaveBeenCalled()
+    expect(addServerHandler).toHaveBeenCalledTimes(2)
   })
 })

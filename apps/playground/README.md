@@ -36,18 +36,20 @@ Behaviour to observe:
   handler and are distinguished by `context.method`.
 - A controller handler is a plain class method that receives an
   `ApiRequestContext` (`params`, `query`, `headers`, `body`, `method`, `event`)
-  only when it declares that parameter; a method declaring none is invoked
-  without arguments. The class is instantiated once at startup, so instance
-  state is shared across requests.
-- Requests and responses are JSON: a result is sent as-is, an empty result
-  answers `{}`, and a thrown error answers `{"error":{"code":500,"message":"..."}}`
-  with the HTTP status taken from `code`. The playground controller is
+  when it declares that parameter, and is invoked without arguments when it
+  declares none; the body is only parsed when the context is injected. The class
+  is instantiated once at startup, so instance state is shared across requests.
+- Requests and responses are JSON and every response carries the `200` status:
+  a result is sent as-is, an empty result answers `{}`, and a failure answers
+  `{"error":{"code":...,"message":"..."}}`. The playground controller is
   framework-agnostic by default, so an unknown id returns `null` (a JSON `null`
-  body) instead of 404, and an invalid create payload surfaces as a `500` JSON
-  error. Throw `{ code, message }` to pick a specific status code.
-- **Only `GET` and `POST` are dispatched** to controller routes. Other verbs
-  fall through to the rest of Nitro/Nuxt untouched — `PUT /api/ctrl/todos`
-  renders the Nuxt page here.
+  body) instead of 404, and an invalid create payload surfaces as a JSON error.
+  Throw `{ code, message }` to identify the failure.
+- A request whose path + method matches no `ApiRoute` answers
+  `{"error":{"code":404,"message":"Not Found"}}` — `PUT /api/ctrl/todos`
+  included, since routes only answer `GET` and `POST`.
+- Any origin may call the API (`Access-Control-Allow-Origin: *`), and `OPTIONS`
+  preflights are answered by the same handler.
 - **Registration**: the controller file must sit under the module's `dir`
-  (default `server/apis`) and is registered through the generated manifest and
-  bootstrap plugin.
+  (default `server/apis`); one catch-all Nitro handler serves the prefix and the
+  router matches each request at runtime.

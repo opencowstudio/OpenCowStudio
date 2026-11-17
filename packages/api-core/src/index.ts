@@ -29,8 +29,10 @@ export type {
   ApiError,
   ApiErrorResponse,
   ApiMethod,
+  ApiParameterSource,
   ApiRequestContext,
   ApiRouteMetadata,
+  ApiRouteParameter,
 } from './shared/types.ts'
 
 // Route path normalisation, shared by the parser and the router.
@@ -50,6 +52,19 @@ export type {
   ApiRouteEntry,
   ApiRouteMatch,
 } from './runtime/router.ts'
+
+// Route execution: `dispatch` and the HTTP adapters share one pipeline, so a
+// custom adapter matches the built-in behaviour.
+export { apiNotFoundBody, executeApiRoute } from './runtime/pipeline.ts'
+export type {
+  ApiPipelineRequest,
+  ApiResponseBody,
+  ApiRouteTarget,
+} from './runtime/pipeline.ts'
+
+// Handler argument injection: the same values are injected by `dispatch` and by
+// the HTTP adapters, so a custom adapter matches the built-in behaviour.
+export { toApiArguments } from './runtime/arguments.ts'
 
 // JSON response helpers: the same envelope is used by `ApiRouter.dispatch` and
 // by the HTTP adapters, so a custom adapter matches the built-in behaviour.

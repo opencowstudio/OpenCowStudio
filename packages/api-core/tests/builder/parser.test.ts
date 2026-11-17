@@ -44,9 +44,9 @@ describe('parseApiControllers', () => {
       path: '/',
       description: 'User endpoints',
       routes: [
-        { handler: 'show', methods: ['GET', 'POST'], injectsContext: false, path: '/users/:id', name: 'UserController.show', description: 'Read a user' },
-        { handler: 'list', methods: ['GET', 'POST'], injectsContext: false, path: '/users', name: 'UserController.list', description: 'List users' },
-        { handler: 'touch', methods: ['GET', 'POST'], injectsContext: false, path: '/users/touch', name: 'UserController.touch', description: '' },
+        { handler: 'show', methods: ['GET', 'POST'], parameters: [], path: '/users/:id', name: 'UserController.show', description: 'Read a user' },
+        { handler: 'list', methods: ['GET', 'POST'], parameters: [], path: '/users', name: 'UserController.list', description: 'List users' },
+        { handler: 'touch', methods: ['GET', 'POST'], parameters: [], path: '/users/touch', name: 'UserController.touch', description: '' },
       ],
     })
 
@@ -57,7 +57,7 @@ describe('parseApiControllers', () => {
       path: '/',
       description: '',
       routes: [
-        { handler: 'check', methods: ['GET', 'POST'], injectsContext: false, path: '/health', name: 'HealthController.check', description: '' },
+        { handler: 'check', methods: ['GET', 'POST'], parameters: [], path: '/health', name: 'HealthController.check', description: '' },
       ],
     })
   })
@@ -107,7 +107,7 @@ export class BothController {
     expect(parseApiControllers([file])[0]?.routes[0]?.methods).toEqual(['GET', 'POST'])
   })
 
-  it('injects the context only when the handler declares it', () => {
+  it('records the injected context parameter of every route', () => {
     const file = writeSource(`
 import { ApiController, ApiRoute, type ApiRequestContext } from '@opencowstudio/api-core'
 
@@ -118,20 +118,37 @@ export class SignatureController {
     return context
   }
 
-  @ApiRoute({ path: '/without' })
-  withoutContext(): unknown {
+  @ApiRoute({ path: '/none' })
+  none(): unknown {
     return null
   }
 }
 `)
     const routes = parseApiControllers([file])[0]?.routes
-    expect(routes?.map(route => [route.handler, route.injectsContext])).toEqual([
-      ['withContext', true],
-      ['withoutContext', false],
+    expect(routes?.map(route => route.parameters)).toEqual([
+      [{ name: 'context', source: 'context' }],
+      [],
     ])
   })
 
-  it('rejects a handler parameter that is not ApiRequestContext', () => {
+  it('records a destructured parameter without a name', () => {
+    const file = writeSource(`
+import { ApiController, ApiRoute, type ApiRequestContext } from '@opencowstudio/api-core'
+
+@ApiController()
+export class DestructuredController {
+  @ApiRoute({ path: '/destructured' })
+  destructured({ params }: ApiRequestContext): unknown {
+    return params
+  }
+}
+`)
+    expect(parseApiControllers([file])[0]?.routes[0]?.parameters).toEqual([
+      { name: '<destructured>', source: 'context' },
+    ])
+  })
+
+  it('rejects a parameter whose type is not injectable', () => {
     const file = writeSource(`
 import { ApiController, ApiRoute } from '@opencowstudio/api-core'
 
@@ -146,19 +163,19 @@ export class WrongController {
     expect(() => parseApiControllers([file])).toThrow(/must be typed as ApiRequestContext/)
   })
 
-  it('rejects a handler declaring several parameters', () => {
+  it('rejects a rest parameter', () => {
     const file = writeSource(`
-import { ApiController, ApiRoute } from '@opencowstudio/api-core'
+import { ApiController, ApiRoute, type ApiRequestContext } from '@opencowstudio/api-core'
 
 @ApiController()
 export class ManyController {
   @ApiRoute({ path: '/many' })
-  many(first: unknown, second: unknown): unknown {
-    return [first, second]
+  many(...args: ApiRequestContext[]): unknown {
+    return args
   }
 }
 `)
-    expect(() => parseApiControllers([file])).toThrow(/at most one parameter/)
+    expect(() => parseApiControllers([file])).toThrow(/cannot declare a rest parameter/)
   })
 
   it('rejects a duplicate path inside one controller', () => {

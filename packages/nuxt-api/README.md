@@ -12,18 +12,23 @@ Nuxt/Nitro application.
   total number of controllers and each resolved controller, and bakes the typed
   collection into a **server-only** manifest (`api.manifest.ts`).
 - The manifest also carries the controller class map (`apiControllersTypeMap`)
-  and the normalised mount prefix, so the route table and the generated Nitro
-  handlers cannot disagree on either.
+  and the normalised mount prefix, so the route table and the HTTP entry cannot
+  disagree on either.
 - At runtime a Nitro plugin imports the manifest directly, builds the
   `ApiRouter` from it — instantiating every controller and binding each route
   handler — and injects the router service (`runtime/utils/router.ts`):
   `useApiRouter()` is auto-imported in Nitro server code.
-- Every declared path + method pair is also registered as a real Nitro route
-  handler, so Nitro itself performs the matching (path params, method,
-  precedence) and the generated module dispatches to the controller method,
-  passing an `ApiRequestContext` (`params`, `query`, `headers`, `body`, `event`)
-  only when the method declares that parameter. Controller routes therefore
-  behave like file-based ones and never shadow them.
+- One catch-all Nitro handler (`runtime/server/api.ts`) serves the whole prefix.
+  It hands the request to `ApiRouter.dispatch`, so the HTTP entry and the unit
+  tests run **exactly the same pipeline** (`executeApiRoute`): matching, context
+  building, argument injection, response/error normalisation. Permission checks,
+  request validation and response validation belong in that pipeline and
+  therefore apply to both entries.
+- A request whose `path + method` matches no `ApiRoute` answers a JSON `404`
+  `ApiError`, and every response keeps the `200` status — failures travel in the
+  body (`{ error: { code, message } }`), never in the status line.
+- Cross-origin requests are allowed from any origin by default
+  (`Access-Control-Allow-Origin: *`, preflight answered on `OPTIONS`).
 
 Because the parsing happens at build time, a misplaced `@ApiRoute` (on a
 property or a static method) or a duplicated method + path pair fails the build
@@ -61,20 +66,25 @@ export class UserController {
 ```
 
 A `GET /api/users/42` request is then answered by `UserController.show` with
-`params = { id: '42' }`. Every route answers both `GET` and `POST`; other
-methods are left untouched.
+`params = { id: '42' }`. Every route answers both `GET` and `POST`; a request
+whose path + method matches no route (including other verbs) answers a `404`
+`ApiError` instead of falling through.
 
 Controller routes are JSON endpoints, in and out: the request body is parsed as
 JSON for the methods that carry one (`POST`, `PUT`, `PATCH`, `DELETE`), and the
-answer is always a JSON document:
+answer is always a JSON document, always with the `200` status:
 
-| Handler outcome | Response |
-|-----------------|----------|
+| Outcome | Response |
+|---------|----------|
 | returned nothing | `{}` |
 | returned a string | `{"text":"..."}` |
 | returned anything else | that value |
-| threw `{ code, message }` | `{"error":{"code":404,"message":"..."}}`, HTTP status `code` |
+| no matching route | `{"error":{"code":404,"message":"Not Found"}}` |
+| threw `{ code, message }` | `{"error":{"code":404,"message":"..."}}` |
 | threw anything else | `{"error":{"code":500,"message":"..."}}` |
+
+The `code` is informational: it identifies the failure for the client, while the
+HTTP status stays `200`.
 
 ```ts
 @ApiRoute({ path: '/ctrl/echo' })
@@ -88,12 +98,14 @@ missing(): unknown {
 }
 ```
 
-Handler parameters follow the method signature, so a handler only receives what
-it declares:
+Handler parameters are injected by their declared type, in declaration order.
+`ApiRequestContext` is the only injectable type today, so a handler either
+declares it or takes no parameter at all — and nothing is read from the request
+otherwise (the body is only parsed when the context is injected):
 
 ```ts
 @ApiController()
-export class HealthController {
+export class TodoController {
   // No parameter: invoked without arguments.
   @ApiRoute({ path: '/ctrl/health' })
   health(): { ok: true } {
@@ -101,15 +113,16 @@ export class HealthController {
   }
 
   // Declared parameter: receives the request context.
-  @ApiRoute({ path: '/ctrl/echo' })
-  echo({ body }: ApiRequestContext): unknown {
-    return body
+  @ApiRoute({ path: '/ctrl/todos' })
+  todos({ method, body }: ApiRequestContext): unknown {
+    return method === 'POST' ? createTodo(body) : listTodos()
   }
 }
 ```
 
-A handler declaring anything but a single `ApiRequestContext` parameter fails
-the build.
+The metadata records one entry per parameter (`name` + `source`), so further
+injectable types can be added later without reshaping it. A parameter whose type
+is not injectable, or a rest parameter, fails the build.
 
 ### Router service
 

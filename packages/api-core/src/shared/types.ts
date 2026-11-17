@@ -21,6 +21,23 @@ export const DEFAULT_API_METHODS = ['GET', 'POST'] as const
 /** An HTTP method a route answers. */
 export type ApiMethod = (typeof API_METHODS)[number]
 
+/**
+ * A request value that can be injected into a handler parameter.
+ *
+ * The injected value is selected by the parameter's declared type; today only
+ * `ApiRequestContext` is injectable. Adding a type means adding an entry here,
+ * a mapping in the parser and a case in `toApiArguments`.
+ */
+export type ApiParameterSource = 'context'
+
+/** One handler parameter, with the request value injected into it. */
+export interface ApiRouteParameter {
+  /** Declared parameter name, kept for diagnostics and documentation. */
+  name: string
+  /** Request value injected into the parameter, chosen by its declared type. */
+  source: ApiParameterSource
+}
+
 /** A single route of a controller, resolved from an `@ApiRoute` decorator. */
 export interface ApiRouteMetadata {
   /** Name of the controller method that handles the request. */
@@ -28,13 +45,13 @@ export interface ApiRouteMetadata {
   /** HTTP methods the handler answers; always {@link DEFAULT_API_METHODS}. */
   methods: ApiMethod[]
   /**
-   * Whether the handler method declares the {@link ApiRequestContext} parameter.
+   * Parameters of the handler, in declaration order.
    *
-   * Injection follows the method signature: a handler declaring the parameter
-   * receives the request context as its only argument, while a handler declaring
-   * none is invoked without arguments.
+   * Each one receives the request value its declared type selects, whatever its
+   * position; a handler declaring no parameter yields an empty list and is
+   * invoked without arguments.
    */
-  injectsContext: boolean
+  parameters: ApiRouteParameter[]
   /**
    * One concrete path of the route, relative to the mount prefix, normalised.
    *

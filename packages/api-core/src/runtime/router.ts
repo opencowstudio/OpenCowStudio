@@ -2,12 +2,11 @@ import { consola } from 'consola'
 import { joinApiPaths, normalizeApiPath } from '../shared/path.ts'
 import type {
   ApiControllerMetadata,
-  ApiError,
   ApiMethod,
-  ApiRequestContext,
   ApiRouteMetadata,
 } from '../shared/types.ts'
-import { toApiError, toApiResponse } from './response.ts'
+import type { ApiPipelineRequest, ApiResponseBody } from './pipeline.ts'
+import { apiNotFoundBody, executeApiRoute } from './pipeline.ts'
 
 // Tagged logger so the core stays framework-agnostic (no Nuxt dep).
 const logger = consola.withTag('api-router')
@@ -33,11 +32,11 @@ export type ApiControllerClassMap = Record<string, ApiControllerClass>
 /**
  * A bound route handler.
  *
- * The request context is passed only to handlers whose method declares it (see
- * {@link ApiRouteMetadata.injectsContext}); the others are invoked without
- * arguments.
+ * The arguments are the request values its declared parameters select (see
+ * {@link ApiRouteMetadata.parameters}), in declaration order; a handler
+ * declaring no parameter is invoked without arguments.
  */
-export type ApiHandler = (context?: ApiRequestContext) => unknown
+export type ApiHandler = (...args: unknown[]) => unknown
 
 /** A compiled route of the router. */
 export interface ApiRouteEntry {
@@ -76,20 +75,7 @@ export interface ApiRouteMatch {
 }
 
 /** The request handed to {@link ApiRouter.dispatch}. */
-export interface ApiDispatchRequest {
-  /** HTTP method of the request; case-insensitive. */
-  method: string
-  /** Path of the request, relative to the mount prefix. */
-  path: string
-  /** Query string parameters. */
-  query?: Record<string, string | string[]>
-  /** Request headers. */
-  headers?: Record<string, string | undefined>
-  /** Parsed request body. */
-  body?: unknown
-  /** Framework request object, forwarded to the handler untouched. */
-  event?: unknown
-}
+export type ApiDispatchRequest = ApiPipelineRequest
 
 /**
  * The JSON object answered by {@link ApiRouter.dispatch}.
@@ -98,7 +84,7 @@ export interface ApiDispatchRequest {
  * `error` object (`{ error: { code, message } }`) when the request failed; see
  * {@link getApiError} to read it.
  */
-export type ApiDispatchResponse = { [key: string]: unknown }
+export type ApiDispatchResponse = ApiResponseBody
 
 /** Matches a `:name` path segment. */
 const PARAM_SEGMENT_RE = /^:([A-Za-z_$][A-Za-z0-9_$]*)$/
@@ -254,35 +240,19 @@ export class ApiRouter {
 
     // A miss is answered like any other failure, so callers never have to
     // special-case an empty result.
-    if (!match) {
-      const error: ApiError = { code: 404, message: 'Not Found' }
-      return { error }
-    }
+    if (!match) return apiNotFoundBody()
 
-    try {
-      return toApiResponse(await this.#invoke(match, request))
-    } catch (thrown) {
-      const error = toApiError(thrown)
-      logger.error(`Api route "${request.method.toUpperCase()} ${match.path}" failed: ${error.code} ${error.message}`)
-      return { error }
-    }
-  }
-
-  /** Invoke the matched handler, injecting the context only when declared. */
-  #invoke(match: ApiRouteMatch, request: ApiDispatchRequest): unknown {
-    if (!match.route.injectsContext) return match.handler()
-
-    const context: ApiRequestContext = {
-      method: match.method,
-      path: normalizeApiPath(request.path),
-      params: match.params,
-      query: request.query ?? {},
-      headers: request.headers ?? {},
-      body: request.body,
-      event: request.event,
-    }
-
-    return match.handler(context)
+    // Execution is shared with the HTTP entry: same context, same injection,
+    // same JSON envelope and error handling.
+    return executeApiRoute(
+      {
+        route: match.route,
+        handler: match.handler,
+        method: match.method,
+        params: match.params,
+      },
+      request,
+    )
   }
 
   /** Instantiate one controller and compile all of its routes. */
@@ -334,6 +304,8 @@ export class ApiRouter {
         keys,
         pattern,
       })
+
+      logger.info(`Registered api route "${fullPath}" (${route.methods.join(', ')}) -> ${metadata.className}.${route.handler}`)
     }
 
     this.#controllers.set(metadata.className, { metadata, instance })

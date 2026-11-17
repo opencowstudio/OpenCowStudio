@@ -68,11 +68,23 @@ controller. `@ApiController` only accepts an optional `description`.
 A route declares neither a method nor a name: `path` is required, every route
 answers both `POST` and `GET`, and its name is `${className}.${handler}`.
 
-The handler signature decides what it receives: a method declaring an
-`ApiRequestContext` parameter is called with the request context as its only
-argument, while a method declaring no parameter is called without arguments. Any
-other signature (several parameters, a differently typed one, a rest parameter)
-fails the build.
+Handler parameters are injected by their declared type, in declaration order.
+`ApiRequestContext` is the only injectable type today, so a method either
+declares it or takes no parameter at all:
+
+```ts
+@ApiRoute({ path: '/users/:id' })
+show(context: ApiRequestContext): unknown {
+  return { id: context.params.id }
+}
+```
+
+The metadata records one entry per parameter (`name` + `source`), so further
+injectable types can be added later without reshaping it: add a source to
+`ApiParameterSource`, a mapping in the parser and a case in `toApiArguments`.
+
+A parameter whose type is not injectable, or a rest parameter, fails the build,
+so a handler never silently receives `undefined`.
 
 At runtime the router is built from the metadata produced by the parser and a
 map of the controller classes keyed by class name:
@@ -97,9 +109,9 @@ like any other failure, so there is no separate "not matched" outcome:
 | threw `{ code, message }` | `{ "error": { "code": 404, "message": "User not found" } }` |
 | threw anything else | `{ "error": { "code": 500, "message": "..." } }` |
 
-A handler controls its status code by throwing an `ApiError`-shaped object; the
-same envelope is produced by the HTTP adapters, which set the HTTP status from
-`error.code`:
+A handler reports a failure by throwing an `ApiError`-shaped object; `code`
+identifies the failure in the body, it is not the HTTP status — adapters answer
+`200` and let the body carry the error:
 
 ```ts
 @ApiRoute({ path: '/users/:id' })
@@ -110,7 +122,9 @@ show({ params }: ApiRequestContext): unknown {
 }
 ```
 
-`getApiError(response)` reads the error a response carries (for the HTTP status),
+`dispatch` and the HTTP adapters share one pipeline (`executeApiRoute`), so
+permission checks, request validation and response validation added there apply
+to both entries. `getApiError(response)` reads the error a response carries,
 while `toApiResponse`, `isApiError`, `toApiError` and `toApiErrorBody` are
 exported so a custom adapter can reuse the exact same conversion.
 

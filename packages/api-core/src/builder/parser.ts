@@ -4,7 +4,12 @@ import { consola } from 'consola'
 import { joinApiPaths, normalizeApiPath } from '../shared/path.ts'
 import { DEFAULT_API_METHODS } from '../shared/types.ts'
 import type { ApiControllerOptions, ApiRouteOptions } from './decorators.ts'
-import type { ApiControllerMetadata, ApiRouteMetadata } from '../shared/types.ts'
+import type {
+  ApiControllerMetadata,
+  ApiParameterSource,
+  ApiRouteMetadata,
+  ApiRouteParameter,
+} from '../shared/types.ts'
 
 // Tagged logger so the core stays framework-agnostic (no Nuxt dep).
 const logger = consola.withTag('api-parser')
@@ -34,8 +39,14 @@ const CONTROLLER_DECORATOR = 'ApiController'
 /** Name of the method decorator registering a route. */
 const ROUTE_DECORATOR = 'ApiRoute'
 
-/** Type name of the request context injected into a route handler. */
-const CONTEXT_TYPE_NAME = 'ApiRequestContext'
+/**
+ * Type names a handler parameter may declare, mapped to the request value
+ * injected into it. Adding an injectable type means adding an entry here (and a
+ * case to the runtime resolver).
+ */
+const PARAMETER_SOURCES: Record<string, ApiParameterSource> = {
+  ApiRequestContext: 'context',
+}
 
 /** Options controlling how a single controller's metadata is assembled. */
 export interface ParseApiControllerOptions {
@@ -171,12 +182,12 @@ export function parseApiRoute(
   const options = parseOptionsArgument<ApiRouteOptions>(decorator, sourceFile, ROUTE_DECORATOR)
   const context = `route ${className}.${handler}`
   const description = resolveDescription(options.description, `${context}.description`)
-  const injectsContext = resolveInjectsContext(member, sourceFile, context)
+  const parameters = resolveParameters(member, sourceFile, context)
 
   return resolvePaths(options.path, `${context}.path`).map(path => ({
     handler,
     methods: [...DEFAULT_API_METHODS],
-    injectsContext,
+    parameters,
     path,
     name: `${className}.${handler}`,
     description,
@@ -538,43 +549,50 @@ function resolvePaths(value: unknown, context: string): string[] {
   return [...new Set(paths)]
 }
 
+/** The injectable type names, for diagnostics. */
+const PARAMETER_TYPE_NAMES = Object.keys(PARAMETER_SOURCES)
+
 /**
- * Decide whether a route handler expects the request context argument.
+ * Resolve the parameters injected into a route handler, in declaration order.
  *
- * The signature is read statically, because types are erased at runtime:
- *  - no parameter           -> the handler is invoked without arguments,
- *  - one `ApiRequestContext` -> the context is passed as the only argument.
- *
- * Any other signature is rejected so a handler cannot silently receive an
- * argument it never declared (the runtime would have to guess).
+ * The signature is read statically, because types are erased at runtime: each
+ * parameter is injected according to its declared type (see
+ * {@link PARAMETER_SOURCES}), so the order and the number of parameters are
+ * free. A parameter whose type is not injectable is rejected instead of being
+ * silently left `undefined`.
  */
-function resolveInjectsContext(
+function resolveParameters(
   member: ts.MethodDeclaration,
   sourceFile: ts.SourceFile,
   context: string,
-): boolean {
-  const [parameter, ...extra] = member.parameters
-  if (!parameter) return false
-
+): ApiRouteParameter[] {
   const position = positionText(member, sourceFile)
-  if (extra.length > 0) {
-    fail(`Invalid handler signature for ${context} at ${position}: a @ApiRoute handler accepts at most one parameter, typed as ${CONTEXT_TYPE_NAME}.`)
-  }
-  if (parameter.dotDotDotToken) {
-    fail(`Invalid handler signature for ${context} at ${position}: a @ApiRoute handler cannot declare a rest parameter.`)
-  }
-  if (!parameter.type || !isRequestContextType(parameter.type)) {
-    fail(`Invalid handler signature for ${context} at ${position}: the parameter must be typed as ${CONTEXT_TYPE_NAME}, or omitted entirely.`)
-  }
 
-  return true
+  return member.parameters.map((parameter) => {
+    if (parameter.dotDotDotToken) {
+      fail(`Invalid handler signature for ${context} at ${position}: a @ApiRoute handler cannot declare a rest parameter.`)
+    }
+
+    const source = parameter.type ? resolveParameterSource(parameter.type) : undefined
+    if (!source) {
+      fail(`Invalid handler signature for ${context} at ${position}: every parameter must be typed as ${PARAMETER_TYPE_NAMES.join(', ')}.`)
+    }
+
+    return { name: parameterName(parameter.name), source }
+  })
 }
 
-/** Whether a parameter type annotation names `ApiRequestContext`. */
-function isRequestContextType(node: ts.TypeNode): boolean {
-  if (!ts.isTypeReferenceNode(node)) return false
+/** Read the injected source from a parameter type annotation. */
+function resolveParameterSource(node: ts.TypeNode): ApiParameterSource | undefined {
+  if (!ts.isTypeReferenceNode(node)) return undefined
+
   const name = ts.isIdentifier(node.typeName) ? node.typeName.text : node.typeName.right.text
-  return name === CONTEXT_TYPE_NAME
+  return Object.hasOwn(PARAMETER_SOURCES, name) ? PARAMETER_SOURCES[name] : undefined
+}
+
+/** Read a parameter's declared name; a destructuring pattern has none. */
+function parameterName(name: ts.BindingName): string {
+  return ts.isIdentifier(name) ? name.text : '<destructured>'
 }
 
 /** Resolve an optional description; undefined defaults to the empty string. */

@@ -14,8 +14,8 @@ export class TodoController {
   @ApiRoute({ path: '/ctrl/todos', description: 'List todos on GET, create one on POST' })
   async todos({ method, body }: ApiRequestContext): Promise<unknown> {
     if (method === 'POST') {
-      // No h3 helper is involved: an invalid payload surfaces as a 500. Pass
-      // `context.event` to the HTTP layer if you need a specific status code.
+      // No h3 helper is involved: an invalid payload surfaces as a 500. Throw
+      // `{ code, message }` when you need a specific status code.
       return createTodo(body)
     }
 
@@ -25,7 +25,7 @@ export class TodoController {
   @ApiRoute({ path: '/ctrl/todos/:id', description: 'Read one todo' })
   show({ params }: ApiRequestContext): unknown {
     // Path parameters are captured from the `:id` segment and URL-decoded.
-    // There is no `createError` here, so a missing todo answers `null` (a JSON
+    // There is no thrown error here, so a missing todo answers `null` (a JSON
     // `null` body) rather than 404.
     return findTodo(params.id!) ?? null
   }

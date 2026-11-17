@@ -44,7 +44,8 @@ out of the runtime bundle. These rules are enforced by
   - `compileApiPath` turns `/users/:id` into a matcher plus its parameter names.
   - `ApiRouter` instantiates every controller, binds each route handler to its
     instance, matches requests (static segments win over parameters) and
-    dispatches them with a populated `ApiRequestContext`.
+    dispatches them, passing the `ApiRequestContext` only to handlers that
+    declare it.
 
 ## Usage
 
@@ -67,6 +68,12 @@ controller. `@ApiController` only accepts an optional `description`.
 A route declares neither a method nor a name: `path` is required, every route
 answers both `POST` and `GET`, and its name is `${className}.${handler}`.
 
+The handler signature decides what it receives: a method declaring an
+`ApiRequestContext` parameter is called with the request context as its only
+argument, while a method declaring no parameter is called without arguments. Any
+other signature (several parameters, a differently typed one, a rest parameter)
+fails the build.
+
 At runtime the router is built from the metadata produced by the parser and a
 map of the controller classes keyed by class name:
 
@@ -75,7 +82,37 @@ import { ApiRouter } from '@opencowstudio/api-core'
 
 const router = new ApiRouter(controllersMetadata, controllerClasses)
 const result = await router.dispatch({ method: 'GET', path: '/users/42' })
+// { id: '42' }
 ```
+
+The answer *is* the JSON value — there is no `body` wrapper. A miss is a `404`
+like any other failure, so there is no separate "not matched" outcome:
+
+| Outcome | Response |
+|---------|----------|
+| returned nothing (`undefined`) | `{}` |
+| returned a string | `{ "text": "..." }` |
+| returned anything else | that value |
+| no route matched | `{ "error": { "code": 404, "message": "Not Found" } }` |
+| threw `{ code, message }` | `{ "error": { "code": 404, "message": "User not found" } }` |
+| threw anything else | `{ "error": { "code": 500, "message": "..." } }` |
+
+A handler controls its status code by throwing an `ApiError`-shaped object; the
+same envelope is produced by the HTTP adapters, which set the HTTP status from
+`error.code`:
+
+```ts
+@ApiRoute({ path: '/users/:id' })
+show({ params }: ApiRequestContext): unknown {
+  const user = findUser(params.id)
+  if (!user) throw { code: 404, message: 'User not found' }
+  return user
+}
+```
+
+`getApiError(response)` reads the error a response carries (for the HTTP status),
+while `toApiResponse`, `isApiError`, `toApiError` and `toApiErrorBody` are
+exported so a custom adapter can reuse the exact same conversion.
 
 For Nuxt integration, use [`@opencowstudio/nuxt-api`](../nuxt-api) instead of
 wiring this package up manually.

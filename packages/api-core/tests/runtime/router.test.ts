@@ -14,15 +14,20 @@ function controller(overrides: Partial<ApiControllerMetadata> = {}): ApiControll
   }
 }
 
-function route(handler: string, path: string, name = `UserController.${handler}`): ApiRouteMetadata {
-  return { handler, methods: ['GET', 'POST'], path, name, description: '' }
+function route(
+  handler: string,
+  path: string,
+  name = `UserController.${handler}`,
+  injectsContext = true,
+): ApiRouteMetadata {
+  return { handler, methods: ['GET', 'POST'], injectsContext, path, name, description: '' }
 }
 
 const controllers: ApiControllerMetadata[] = [
   controller({
     routes: [
       route('show', '/users/:id'),
-      route('me', '/users/me'),
+      route('me', '/users/me', 'UserController.me', false),
       route('create', '/users'),
     ],
   }),
@@ -157,9 +162,10 @@ describe('ApiRouter — matching', () => {
 })
 
 describe('ApiRouter — dispatch', () => {
-  it('reports unmatched requests without invoking a handler', async () => {
+  it('answers a 404 JSON error when no route matches', async () => {
     const router = new ApiRouter(controllers, classMap)
-    await expect(router.dispatch({ method: 'GET', path: '/articles' })).resolves.toEqual({ matched: false })
+    await expect(router.dispatch({ method: 'GET', path: '/articles' }))
+      .resolves.toEqual({ error: { code: 404, message: 'Not Found' } })
   })
 
   it('invokes the handler with the request context', async () => {
@@ -190,7 +196,6 @@ describe('ApiRouter — dispatch', () => {
       event,
     })
 
-    expect(result.matched).toBe(true)
     expect(capture).toHaveBeenCalledOnce()
 
     const context = capture.mock.calls[0]![0]
@@ -205,9 +210,121 @@ describe('ApiRouter — dispatch', () => {
     })
   })
 
+  it('invokes a handler without arguments when it declares no context', async () => {
+    const capture = vi.fn(() => 'ok')
+
+    class NoContextController {
+      capture = capture
+    }
+
+    const router = new ApiRouter(
+      [
+        controller({
+          className: 'NoContextController',
+          name: 'NoContextController',
+          routes: [route('capture', '/plain/:id', 'NoContextController.capture', false)],
+        }),
+      ],
+      { NoContextController },
+    )
+
+    await expect(
+      router.dispatch({ method: 'GET', path: '/plain/7' }),
+    ).resolves.toEqual({ text: 'ok' })
+    expect(capture).toHaveBeenCalledWith()
+  })
+
   it('defaults the optional request fields', async () => {
     const router = new ApiRouter(controllers, classMap)
     const result = await router.dispatch({ method: 'GET', path: '/users/me' })
-    expect(result).toEqual({ matched: true, value: 'me' })
+    expect(result).toEqual({ text: 'me' })
+  })
+
+  it('answers an empty object when the handler returns nothing', async () => {
+    class EmptyController {
+      nothing(): void {}
+    }
+
+    const router = new ApiRouter(
+      [
+        controller({
+          className: 'EmptyController',
+          name: 'EmptyController',
+          routes: [route('nothing', '/empty', 'EmptyController.nothing', false)],
+        }),
+      ],
+      { EmptyController },
+    )
+
+    await expect(router.dispatch({ method: 'GET', path: '/empty' }))
+      .resolves.toEqual({})
+  })
+
+  it('answers the handler result as the response', async () => {
+    class PayloadController {
+      payload(): unknown {
+        return { id: '7', done: false }
+      }
+    }
+
+    const router = new ApiRouter(
+      [
+        controller({
+          className: 'PayloadController',
+          name: 'PayloadController',
+          routes: [route('payload', '/payload', 'PayloadController.payload', false)],
+        }),
+      ],
+      { PayloadController },
+    )
+
+    await expect(router.dispatch({ method: 'GET', path: '/payload' }))
+      .resolves.toEqual({ id: '7', done: false })
+  })
+
+  it('wraps a thrown ApiError in a JSON error body', async () => {
+    class MissingController {
+      missing(): unknown {
+        throw { code: 404, message: 'Todo not found' }
+      }
+    }
+
+    const router = new ApiRouter(
+      [
+        controller({
+          className: 'MissingController',
+          name: 'MissingController',
+          routes: [route('missing', '/missing', 'MissingController.missing', false)],
+        }),
+      ],
+      { MissingController },
+    )
+
+    const response = await router.dispatch({ method: 'GET', path: '/missing' })
+
+    expect(response).toEqual({ error: { code: 404, message: 'Todo not found' } })
+  })
+
+  it('reports any other thrown error as a 500', async () => {
+    class BrokenController {
+      broken(): unknown {
+        throw new Error('boom')
+      }
+    }
+
+    const router = new ApiRouter(
+      [
+        controller({
+          className: 'BrokenController',
+          name: 'BrokenController',
+          routes: [route('broken', '/broken', 'BrokenController.broken', false)],
+        }),
+      ],
+      { BrokenController },
+    )
+
+    const response = await router.dispatch({ method: 'GET', path: '/broken' })
+
+    expect(response).toEqual({ error: { code: 500, message: 'boom' } })
   })
 })

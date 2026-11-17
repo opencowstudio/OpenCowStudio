@@ -19,7 +19,7 @@ const controller: ApiControllerMetadata = {
   description: '',
   modulePath: '/server/apis/user.ts',
   routes: [
-    { handler: 'show', methods: ['GET'], path: '/users/:id', name: 'UserController.show', description: '' },
+    { handler: 'show', methods: ['GET'], injectsContext: true, path: '/users/:id', name: 'UserController.show', description: '' },
   ],
 }
 

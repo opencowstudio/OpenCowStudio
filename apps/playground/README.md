@@ -34,13 +34,17 @@ Behaviour to observe:
   `prefix`; the source tree only groups controller files.
 - A controller route answers **both `GET` and `POST`**, so the verbs share one
   handler and are distinguished by `context.method`.
-- A controller handler is a plain class method receiving an `ApiRequestContext`
-  (`params`, `query`, `headers`, `body`, `method`, `event`); the class is
-  instantiated once at startup, so instance state is shared across requests.
-- A controller is framework-agnostic by default, so an unknown id answers 204 (a
-  `null` result is an empty response) instead of 404, and an invalid create
-  payload surfaces as 500. Pass `context.event` to the HTTP layer when a
-  controller needs a specific status code.
+- A controller handler is a plain class method that receives an
+  `ApiRequestContext` (`params`, `query`, `headers`, `body`, `method`, `event`)
+  only when it declares that parameter; a method declaring none is invoked
+  without arguments. The class is instantiated once at startup, so instance
+  state is shared across requests.
+- Requests and responses are JSON: a result is sent as-is, an empty result
+  answers `{}`, and a thrown error answers `{"error":{"code":500,"message":"..."}}`
+  with the HTTP status taken from `code`. The playground controller is
+  framework-agnostic by default, so an unknown id returns `null` (a JSON `null`
+  body) instead of 404, and an invalid create payload surfaces as a `500` JSON
+  error. Throw `{ code, message }` to pick a specific status code.
 - **Only `GET` and `POST` are dispatched** to controller routes. Other verbs
   fall through to the rest of Nitro/Nuxt untouched — `PUT /api/ctrl/todos`
   renders the Nuxt page here.

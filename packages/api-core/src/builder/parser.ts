@@ -34,6 +34,9 @@ const CONTROLLER_DECORATOR = 'ApiController'
 /** Name of the method decorator registering a route. */
 const ROUTE_DECORATOR = 'ApiRoute'
 
+/** Type name of the request context injected into a route handler. */
+const CONTEXT_TYPE_NAME = 'ApiRequestContext'
+
 /** Options controlling how a single controller's metadata is assembled. */
 export interface ParseApiControllerOptions {
   /**
@@ -168,10 +171,12 @@ export function parseApiRoute(
   const options = parseOptionsArgument<ApiRouteOptions>(decorator, sourceFile, ROUTE_DECORATOR)
   const context = `route ${className}.${handler}`
   const description = resolveDescription(options.description, `${context}.description`)
+  const injectsContext = resolveInjectsContext(member, sourceFile, context)
 
   return resolvePaths(options.path, `${context}.path`).map(path => ({
     handler,
     methods: [...DEFAULT_API_METHODS],
+    injectsContext,
     path,
     name: `${className}.${handler}`,
     description,
@@ -531,6 +536,45 @@ function resolvePaths(value: unknown, context: string): string[] {
   })
 
   return [...new Set(paths)]
+}
+
+/**
+ * Decide whether a route handler expects the request context argument.
+ *
+ * The signature is read statically, because types are erased at runtime:
+ *  - no parameter           -> the handler is invoked without arguments,
+ *  - one `ApiRequestContext` -> the context is passed as the only argument.
+ *
+ * Any other signature is rejected so a handler cannot silently receive an
+ * argument it never declared (the runtime would have to guess).
+ */
+function resolveInjectsContext(
+  member: ts.MethodDeclaration,
+  sourceFile: ts.SourceFile,
+  context: string,
+): boolean {
+  const [parameter, ...extra] = member.parameters
+  if (!parameter) return false
+
+  const position = positionText(member, sourceFile)
+  if (extra.length > 0) {
+    fail(`Invalid handler signature for ${context} at ${position}: a @ApiRoute handler accepts at most one parameter, typed as ${CONTEXT_TYPE_NAME}.`)
+  }
+  if (parameter.dotDotDotToken) {
+    fail(`Invalid handler signature for ${context} at ${position}: a @ApiRoute handler cannot declare a rest parameter.`)
+  }
+  if (!parameter.type || !isRequestContextType(parameter.type)) {
+    fail(`Invalid handler signature for ${context} at ${position}: the parameter must be typed as ${CONTEXT_TYPE_NAME}, or omitted entirely.`)
+  }
+
+  return true
+}
+
+/** Whether a parameter type annotation names `ApiRequestContext`. */
+function isRequestContextType(node: ts.TypeNode): boolean {
+  if (!ts.isTypeReferenceNode(node)) return false
+  const name = ts.isIdentifier(node.typeName) ? node.typeName.text : node.typeName.right.text
+  return name === CONTEXT_TYPE_NAME
 }
 
 /** Resolve an optional description; undefined defaults to the empty string. */

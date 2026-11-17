@@ -2,10 +2,12 @@ import { consola } from 'consola'
 import { joinApiPaths, normalizeApiPath } from '../shared/path.ts'
 import type {
   ApiControllerMetadata,
+  ApiError,
   ApiMethod,
   ApiRequestContext,
   ApiRouteMetadata,
 } from '../shared/types.ts'
+import { toApiError, toApiResponse } from './response.ts'
 
 // Tagged logger so the core stays framework-agnostic (no Nuxt dep).
 const logger = consola.withTag('api-router')
@@ -28,8 +30,14 @@ export type ApiControllerClass = new (...args: never[]) => object
 /** The controller classes of a scan, keyed by their class name. */
 export type ApiControllerClassMap = Record<string, ApiControllerClass>
 
-/** A bound route handler, invoked with the request context. */
-export type ApiHandler = (context: ApiRequestContext) => unknown
+/**
+ * A bound route handler.
+ *
+ * The request context is passed only to handlers whose method declares it (see
+ * {@link ApiRouteMetadata.injectsContext}); the others are invoked without
+ * arguments.
+ */
+export type ApiHandler = (context?: ApiRequestContext) => unknown
 
 /** A compiled route of the router. */
 export interface ApiRouteEntry {
@@ -83,13 +91,14 @@ export interface ApiDispatchRequest {
   event?: unknown
 }
 
-/** The outcome of {@link ApiRouter.dispatch}. */
-export interface ApiDispatchResponse {
-  /** Whether a route matched the request. */
-  matched: boolean
-  /** The handler's return value; only present when `matched` is true. */
-  value?: unknown
-}
+/**
+ * The JSON object answered by {@link ApiRouter.dispatch}.
+ *
+ * The response *is* the payload — there is no `body` wrapper. It may carry an
+ * `error` object (`{ error: { code, message } }`) when the request failed; see
+ * {@link getApiError} to read it.
+ */
+export type ApiDispatchResponse = { [key: string]: unknown }
 
 /** Matches a `:name` path segment. */
 const PARAM_SEGMENT_RE = /^:([A-Za-z_$][A-Za-z0-9_$]*)$/
@@ -190,10 +199,9 @@ export class ApiRouter {
   /**
    * Match a request against the route table.
    *
-   * The method is case-insensitive and must be one of the route's declared
-   * methods (`GET` and `POST` unless `@ApiRoute` overrides them). The path is
-   * normalised, so a trailing slash or a duplicated separator does not affect
-   * the result.
+   * The method is case-insensitive and must be one of the route's methods
+   * (`GET` and `POST`). The path is normalised, so a trailing slash or a
+   * duplicated separator does not affect the result.
    *
    * @returns The matched route with its decoded path parameters, or null.
    */
@@ -227,16 +235,42 @@ export class ApiRouter {
   }
 
   /**
-   * Match the request and invoke the handler with a fully-populated
-   * {@link ApiRequestContext}.
+   * Match the request and invoke the handler, answering the JSON response.
    *
-   * When no route matches, `matched` is false and the caller is expected to
-   * fall through to the next HTTP handler. Handler errors are not caught, so
-   * the HTTP adapter can translate them into responses.
+   * The handler receives a fully-populated {@link ApiRequestContext} only when
+   * its method declares that parameter; otherwise it is called without
+   * arguments.
+   *
+   * The answered value is the response itself:
+   *  - `{}` when the handler returned nothing,
+   *  - `{ text }` when it returned a string,
+   *  - the handler result otherwise,
+   *  - `{ error: { code: 404, message: 'Not Found' } }` when no route matched,
+   *  - `{ error }` when the handler threw. A thrown `ApiError` keeps its `code`;
+   *    any other error is reported as a `500`.
    */
   async dispatch(request: ApiDispatchRequest): Promise<ApiDispatchResponse> {
     const match = this.match(request.method, request.path)
-    if (!match) return { matched: false }
+
+    // A miss is answered like any other failure, so callers never have to
+    // special-case an empty result.
+    if (!match) {
+      const error: ApiError = { code: 404, message: 'Not Found' }
+      return { error }
+    }
+
+    try {
+      return toApiResponse(await this.#invoke(match, request))
+    } catch (thrown) {
+      const error = toApiError(thrown)
+      logger.error(`Api route "${request.method.toUpperCase()} ${match.path}" failed: ${error.code} ${error.message}`)
+      return { error }
+    }
+  }
+
+  /** Invoke the matched handler, injecting the context only when declared. */
+  #invoke(match: ApiRouteMatch, request: ApiDispatchRequest): unknown {
+    if (!match.route.injectsContext) return match.handler()
 
     const context: ApiRequestContext = {
       method: match.method,
@@ -248,7 +282,7 @@ export class ApiRouter {
       event: request.event,
     }
 
-    return { matched: true, value: await match.handler(context) }
+    return match.handler(context)
   }
 
   /** Instantiate one controller and compile all of its routes. */

@@ -44,9 +44,9 @@ describe('parseApiControllers', () => {
       path: '/',
       description: 'User endpoints',
       routes: [
-        { handler: 'show', methods: ['GET', 'POST'], path: '/users/:id', name: 'UserController.show', description: 'Read a user' },
-        { handler: 'list', methods: ['GET', 'POST'], path: '/users', name: 'UserController.list', description: 'List users' },
-        { handler: 'touch', methods: ['GET', 'POST'], path: '/users/touch', name: 'UserController.touch', description: '' },
+        { handler: 'show', methods: ['GET', 'POST'], injectsContext: false, path: '/users/:id', name: 'UserController.show', description: 'Read a user' },
+        { handler: 'list', methods: ['GET', 'POST'], injectsContext: false, path: '/users', name: 'UserController.list', description: 'List users' },
+        { handler: 'touch', methods: ['GET', 'POST'], injectsContext: false, path: '/users/touch', name: 'UserController.touch', description: '' },
       ],
     })
 
@@ -57,7 +57,7 @@ describe('parseApiControllers', () => {
       path: '/',
       description: '',
       routes: [
-        { handler: 'check', methods: ['GET', 'POST'], path: '/health', name: 'HealthController.check', description: '' },
+        { handler: 'check', methods: ['GET', 'POST'], injectsContext: false, path: '/health', name: 'HealthController.check', description: '' },
       ],
     })
   })
@@ -105,6 +105,60 @@ export class BothController {
 }
 `)
     expect(parseApiControllers([file])[0]?.routes[0]?.methods).toEqual(['GET', 'POST'])
+  })
+
+  it('injects the context only when the handler declares it', () => {
+    const file = writeSource(`
+import { ApiController, ApiRoute, type ApiRequestContext } from '@opencowstudio/api-core'
+
+@ApiController()
+export class SignatureController {
+  @ApiRoute({ path: '/with' })
+  withContext(context: ApiRequestContext): unknown {
+    return context
+  }
+
+  @ApiRoute({ path: '/without' })
+  withoutContext(): unknown {
+    return null
+  }
+}
+`)
+    const routes = parseApiControllers([file])[0]?.routes
+    expect(routes?.map(route => [route.handler, route.injectsContext])).toEqual([
+      ['withContext', true],
+      ['withoutContext', false],
+    ])
+  })
+
+  it('rejects a handler parameter that is not ApiRequestContext', () => {
+    const file = writeSource(`
+import { ApiController, ApiRoute } from '@opencowstudio/api-core'
+
+@ApiController()
+export class WrongController {
+  @ApiRoute({ path: '/wrong' })
+  wrong(id: string): unknown {
+    return id
+  }
+}
+`)
+    expect(() => parseApiControllers([file])).toThrow(/must be typed as ApiRequestContext/)
+  })
+
+  it('rejects a handler declaring several parameters', () => {
+    const file = writeSource(`
+import { ApiController, ApiRoute } from '@opencowstudio/api-core'
+
+@ApiController()
+export class ManyController {
+  @ApiRoute({ path: '/many' })
+  many(first: unknown, second: unknown): unknown {
+    return [first, second]
+  }
+}
+`)
+    expect(() => parseApiControllers([file])).toThrow(/at most one parameter/)
   })
 
   it('rejects a duplicate path inside one controller', () => {

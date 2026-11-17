@@ -101,6 +101,7 @@ describe('registerApiManifest', () => {
     expect(contents).toContain("    'GET',")
     expect(contents).toContain("    'POST',")
     expect(contents).toContain("  handler: 'show',")
+    expect(contents).toContain('  injectsContext: false,')
     expect(contents).toContain('export const apiControllersTypeMap = {')
     expect(contents).toContain('  UserController: UserController,')
     // The metadata is embedded as a TS object literal, not a JSON string.

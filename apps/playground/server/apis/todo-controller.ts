@@ -25,8 +25,8 @@ export class TodoController {
   @ApiRoute({ path: '/ctrl/todos/:id', description: 'Read one todo' })
   show({ params }: ApiRequestContext): unknown {
     // Path parameters are captured from the `:id` segment and URL-decoded.
-    // There is no `createError` here, so a missing todo answers 204 (a null
-    // result is an empty response) rather than 404.
+    // There is no `createError` here, so a missing todo answers `null` (a JSON
+    // `null` body) rather than 404.
     return findTodo(params.id!) ?? null
   }
 }

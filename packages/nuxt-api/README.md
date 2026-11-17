@@ -20,10 +20,10 @@ Nuxt/Nitro application.
   `useApiRouter()` is auto-imported in Nitro server code.
 - Every declared path + method pair is also registered as a real Nitro route
   handler, so Nitro itself performs the matching (path params, method,
-  precedence) and the generated module dispatches to the controller method with
-  a populated `ApiRequestContext` (`params`, `query`, `headers`, `body`,
-  `event`). Controller routes therefore behave like file-based ones and never
-  shadow them.
+  precedence) and the generated module dispatches to the controller method,
+  passing an `ApiRequestContext` (`params`, `query`, `headers`, `body`, `event`)
+  only when the method declares that parameter. Controller routes therefore
+  behave like file-based ones and never shadow them.
 
 Because the parsing happens at build time, a misplaced `@ApiRoute` (on a
 property or a static method) or a duplicated method + path pair fails the build
@@ -63,6 +63,53 @@ export class UserController {
 A `GET /api/users/42` request is then answered by `UserController.show` with
 `params = { id: '42' }`. Every route answers both `GET` and `POST`; other
 methods are left untouched.
+
+Controller routes are JSON endpoints, in and out: the request body is parsed as
+JSON for the methods that carry one (`POST`, `PUT`, `PATCH`, `DELETE`), and the
+answer is always a JSON document:
+
+| Handler outcome | Response |
+|-----------------|----------|
+| returned nothing | `{}` |
+| returned a string | `{"text":"..."}` |
+| returned anything else | that value |
+| threw `{ code, message }` | `{"error":{"code":404,"message":"..."}}`, HTTP status `code` |
+| threw anything else | `{"error":{"code":500,"message":"..."}}` |
+
+```ts
+@ApiRoute({ path: '/ctrl/echo' })
+echo({ body }: ApiRequestContext): unknown {
+  return body
+}
+
+@ApiRoute({ path: '/ctrl/missing' })
+missing(): unknown {
+  throw { code: 404, message: 'Not found' }
+}
+```
+
+Handler parameters follow the method signature, so a handler only receives what
+it declares:
+
+```ts
+@ApiController()
+export class HealthController {
+  // No parameter: invoked without arguments.
+  @ApiRoute({ path: '/ctrl/health' })
+  health(): { ok: true } {
+    return { ok: true }
+  }
+
+  // Declared parameter: receives the request context.
+  @ApiRoute({ path: '/ctrl/echo' })
+  echo({ body }: ApiRequestContext): unknown {
+    return body
+  }
+}
+```
+
+A handler declaring anything but a single `ApiRequestContext` parameter fails
+the build.
 
 ### Router service
 

@@ -26,6 +26,8 @@ export type { ApiControllerOptions, ApiRouteOptions } from './builder/decorators
 export { API_METHODS, DEFAULT_API_METHODS } from './shared/types.ts'
 export type {
   ApiControllerMetadata,
+  ApiError,
+  ApiErrorResponse,
   ApiMethod,
   ApiRequestContext,
   ApiRouteMetadata,
@@ -48,3 +50,13 @@ export type {
   ApiRouteEntry,
   ApiRouteMatch,
 } from './runtime/router.ts'
+
+// JSON response helpers: the same envelope is used by `ApiRouter.dispatch` and
+// by the HTTP adapters, so a custom adapter matches the built-in behaviour.
+export {
+  getApiError,
+  isApiError,
+  toApiError,
+  toApiErrorBody,
+  toApiResponse,
+} from './runtime/response.ts'

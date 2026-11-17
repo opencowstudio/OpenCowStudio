@@ -28,6 +28,14 @@ export interface ApiRouteMetadata {
   /** HTTP methods the handler answers; always {@link DEFAULT_API_METHODS}. */
   methods: ApiMethod[]
   /**
+   * Whether the handler method declares the {@link ApiRequestContext} parameter.
+   *
+   * Injection follows the method signature: a handler declaring the parameter
+   * receives the request context as its only argument, while a handler declaring
+   * none is invoked without arguments.
+   */
+  injectsContext: boolean
+  /**
    * One concrete path of the route, relative to the mount prefix, normalised.
    *
    * A decorator declaring several paths yields one metadata entry per path.
@@ -74,4 +82,23 @@ export interface ApiRequestContext<TBody = unknown> {
   body: TBody
   /** Framework request object (the H3 event under Nitro); opaque to the core. */
   event?: unknown
+}
+
+/**
+ * An error answered by a route, carried by the JSON body `{ error: ApiError }`.
+ *
+ * A handler can throw such an object to control the response (status code and
+ * message); anything else thrown is reported as a `500`.
+ */
+export interface ApiError {
+  /** HTTP status code, between 400 and 599. */
+  code: number
+  /** Human-readable error message. */
+  message: string
+}
+
+/** JSON body of a failed route: `{ "error": { "code": 400, "message": "..." } }`. */
+export interface ApiErrorResponse {
+  /** The error carried by the response. */
+  error: ApiError
 }

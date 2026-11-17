@@ -8,6 +8,12 @@ export default defineNuxtConfig({
       // Path resolved relative to the Nuxt root directory.
       configFile: 'app.config.yaml',
     }],
+    ['@opencowstudio/nuxt-api', {
+      // Controllers are scanned from this directory (relative to the Nuxt root).
+      dir: 'server/apis',
+      // Every controller route is served below this prefix.
+      prefix: '/api',
+    }],
   ],
 
   runtimeConfig: {

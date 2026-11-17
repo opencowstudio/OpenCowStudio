@@ -18,6 +18,8 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@opencowstudio/api-core": "workspace:*",
+    "@opencowstudio/nuxt-api": "workspace:*",
     "@opencowstudio/nuxt-pg": "workspace:*",
     "@opencowstudio/pg-core": "workspace:*",
     "nuxt": "^4.4.6",

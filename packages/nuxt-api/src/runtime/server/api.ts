@@ -7,7 +7,7 @@ import {
   setResponseHeader,
 } from 'h3'
 import type { H3Event } from 'h3'
-import { apiNotFoundBody } from '@opencowstudio/api-core'
+import { apiBadRequestBody, apiNotFoundBody } from '@opencowstudio/api-core'
 import type { ApiDispatchResponse } from '@opencowstudio/api-core'
 import { apiPrefix } from '#api-manifest'
 import { applyApiCorsHeaders } from '../utils/cors'
@@ -17,10 +17,9 @@ import { useApiRouter } from '../utils/router'
 // ---------------------------------------------------------------------------
 // The HTTP entry of the module
 //
-// Nitro forwards every request below the mount prefix here. Unlike a per-route
-// registration, this single handler does not rely on the framework's matcher:
-// it hands the `path + method` to the router, which is the same pipeline the
-// unit tests drive through `ApiRouter.dispatch`.
+// Nitro forwards every registered route here. This single handler does not rely
+// on the framework's matcher: it hands the `path + method` to the router, which
+// is the same pipeline the unit tests drive through `ApiRouter.dispatch`.
 //
 // That keeps one place to grow: permission checks, request validation and
 // response validation live in the shared pipeline (`executeApiRoute`) and apply
@@ -34,7 +33,7 @@ export default defineEventHandler(async (event) => {
   // Every route is cross-origin by default.
   applyApiCorsHeaders(event)
 
-  // Preflight: answered here, since no route is registered for OPTIONS.
+  // Preflight: only reached when a route is registered for OPTIONS.
   if (event.method.toUpperCase() === 'OPTIONS') return ''
 
   const path = stripApiPrefix(apiPrefix, getRequestURL(event).pathname)
@@ -44,7 +43,8 @@ export default defineEventHandler(async (event) => {
   try {
     body = await readApiBody(event)
   } catch {
-    return respond(event, { error: { code: 400, message: 'Invalid JSON request body.' } })
+    // Unreadable or invalid JSON: rejected before the router sees the request.
+    return respond(event, apiBadRequestBody())
   }
 
   // No matching route answers a `404` `ApiError`, just like `dispatch` does.
@@ -60,7 +60,7 @@ export default defineEventHandler(async (event) => {
   return respond(event, response)
 })
 
-/** Parse the JSON body, only for the methods that can carry one. */
+/** Parse the body as JSON, only for the methods that can carry one. */
 async function readApiBody(event: H3Event): Promise<unknown> {
   if (!API_BODY_METHODS.has(event.method.toUpperCase())) return undefined
   return await readBody(event)

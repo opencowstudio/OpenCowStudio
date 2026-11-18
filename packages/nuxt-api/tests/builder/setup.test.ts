@@ -29,12 +29,11 @@ vi.mock('../../src/builder/manifest', () => ({
   registerApiManifest: vi.fn(async () => ({ dst: '/virtual/api.manifest.ts', controllers: [controller] })),
 }))
 
-// Mock the handler registration: it returns the declared routes (registered
-// individually) plus the catch-all fallbacks, all served by one module.
+// Mock the handler registration: it returns the declared routes, all served by
+// one handler module.
 vi.mock('../../src/builder/handlers', () => ({
   registerApiHandlers: vi.fn(() => ({
     routes: [{ route: '/api/users/:id', method: 'GET' }],
-    fallbacks: ['/api', '/api/**'],
     handler: '/virtual/api-handler.mjs',
   })),
 }))
@@ -69,7 +68,7 @@ describe('setupModule', () => {
     expect(addServerHandler).not.toHaveBeenCalled()
   })
 
-  it('registers the manifest, the plugin, the import, every route and the fallbacks', async () => {
+  it('registers the manifest, the plugin, the import and every route', async () => {
     const nuxt = makeNuxt()
     await setupModule(options, nuxt)
 
@@ -83,30 +82,19 @@ describe('setupModule', () => {
     ])
 
     expect(registerApiHandlers).toHaveBeenCalledWith([controller], '/api')
-    expect(addServerHandler).toHaveBeenCalledTimes(3)
-    expect(addServerHandler).toHaveBeenNthCalledWith(1, {
+    expect(addServerHandler).toHaveBeenCalledOnce()
+    expect(addServerHandler).toHaveBeenCalledWith({
       route: '/api/users/:id',
       method: 'get',
       handler: '/virtual/api-handler.mjs',
       lazy: true,
     })
-    expect(addServerHandler).toHaveBeenNthCalledWith(2, {
-      route: '/api',
-      handler: '/virtual/api-handler.mjs',
-      lazy: true,
-    })
-    expect(addServerHandler).toHaveBeenNthCalledWith(3, {
-      route: '/api/**',
-      handler: '/virtual/api-handler.mjs',
-      lazy: true,
-    })
   })
 
-  it('still answers the prefix when nothing was scanned, so the API answers 404 JSON', async () => {
+  it('registers no handler when nothing was scanned', async () => {
     vi.mocked(registerApiManifest).mockResolvedValueOnce({ dst: '/virtual/api.manifest.ts', controllers: [] })
     vi.mocked(registerApiHandlers).mockReturnValueOnce({
       routes: [],
-      fallbacks: ['/api', '/api/**'],
       handler: '/virtual/api-handler.mjs',
     })
 
@@ -114,6 +102,6 @@ describe('setupModule', () => {
 
     expect(addServerPlugin).toHaveBeenCalled()
     expect(addServerImports).toHaveBeenCalled()
-    expect(addServerHandler).toHaveBeenCalledTimes(2)
+    expect(addServerHandler).not.toHaveBeenCalled()
   })
 })

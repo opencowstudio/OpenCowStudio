@@ -9,7 +9,8 @@ import { createTodo, findTodo } from '../utils/todos'
 // `/ctrl/todos` is served at `/api/ctrl/todos`.
 @ApiController({ description: 'Todo resource, wired through a controller' })
 export class TodoController {
-  // A controller route always answers POST, so the payload travels in `body`.
+  // A controller route always answers POST, and `body` is the parsed JSON
+  // object of the request.
   @ApiRoute({ path: '/ctrl/todos', description: 'Create a todo' })
   async todos({ body }: ApiRequestContext): Promise<unknown> {
     // No h3 helper is involved: an invalid payload surfaces as a 500. Throw

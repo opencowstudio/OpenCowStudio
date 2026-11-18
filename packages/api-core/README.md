@@ -32,8 +32,8 @@ out of the runtime bundle. These rules are enforced by
   types (`ApiControllerOptions`, `ApiRouteOptions`) in
   `builder/decorators.ts`.
 - The metadata contract in `shared/types.ts`: `ApiControllerMetadata`,
-  `ApiRouteMetadata`, `ApiMethod` (plus `API_METHODS`) and the
-  `ApiRequestContext` handed to every handler.
+  `ApiRouteMetadata`, `DEFAULT_API_METHODS` and the `ApiRequestContext` handed
+  to every handler.
 - A build-time metadata pipeline (`builder/parser.ts`, exported from
   `@opencowstudio/api-core/builder`): `parseApiController` / `parseApiControllers`
   statically read the decorator *source* via the TypeScript compiler API and

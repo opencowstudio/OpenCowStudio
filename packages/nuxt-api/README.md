@@ -27,14 +27,13 @@ Nuxt/Nitro application.
   response/error normalisation. Permission checks, request validation and
   response validation belong in that pipeline and therefore apply to both
   entries.
-- A catch-all (`<prefix>` and `<prefix>/**`, skipped when the module is mounted
-  at `/`) answers what no declared route matched: the `OPTIONS` preflight,
-  unknown paths and other verbs.
-- A request whose `path + method` matches no `ApiRoute` answers a JSON `404`
-  `ApiError`, and every response keeps the `200` status — failures travel in the
-  body (`{ error: { code, message } }`), never in the status line.
-- Cross-origin requests are allowed from any origin by default
-  (`Access-Control-Allow-Origin: *`, preflight answered on `OPTIONS`).
+- Only the declared `path + method` pairs are registered, so any other request
+  — an undeclared path or verb, the `OPTIONS` preflight — is answered by Nitro
+  instead of the module.
+- `ApiRouter.dispatch` answers a JSON `404` `ApiError` for a miss, and every
+  response it produces keeps the `200` status — failures travel in the body
+  (`{ error: { code, message } }`), never in the status line.
+- Responses of the registered routes carry `Access-Control-Allow-Origin: *`.
 
 Because the parsing happens at build time, a misplaced `@ApiRoute` (on a
 property or a static method) or a duplicated method + path pair fails the build
@@ -76,15 +75,19 @@ A `POST /api/users/42` request is then answered by `UserController.show` with
 whose path + method matches no route (including other verbs) answers a `404`
 `ApiError` instead of falling through.
 
-Controller routes are JSON endpoints, in and out: the request body is parsed as
-JSON for the methods that carry one (`POST`, `PUT`, `PATCH`, `DELETE`), and the
-answer is always a JSON document, always with the `200` status:
+Controller routes are JSON endpoints, in and out. The request body is parsed as
+JSON for the methods that carry one (`POST`, `PUT`, `PATCH`, `DELETE`) and is
+handed to the handler as an object; a request without a body yields `{}`. A body
+that is not a JSON object — an array, a primitive, `null` — is rejected with
+`{"error":{"code":400,"message":"Bad Request"}}`. The answer is always a JSON
+document, always with the `200` status:
 
 | Outcome | Response |
 |---------|----------|
 | returned nothing | `{}` |
 | returned a string | `{"text":"..."}` |
 | returned anything else | that value |
+| body is not a JSON object | `{"error":{"code":400,"message":"Bad Request"}}` |
 | no matching route | `{"error":{"code":404,"message":"Not Found"}}` |
 | threw `{ code, message }` | `{"error":{"code":404,"message":"..."}}` |
 | threw anything else | `{"error":{"code":500,"message":"..."}}` |
@@ -120,8 +123,8 @@ export class TodoController {
 
   // Declared parameter: receives the request context.
   @ApiRoute({ path: '/ctrl/todos' })
-  todos({ method, body }: ApiRequestContext): unknown {
-    return method === 'POST' ? createTodo(body) : listTodos()
+  todos({ body }: ApiRequestContext): unknown {
+    return createTodo(body)
   }
 }
 ```

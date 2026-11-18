@@ -1,6 +1,6 @@
 import { consola } from 'consola'
 import { normalizeApiPath } from '../shared/path.ts'
-import type { ApiMethod, ApiRequestContext, ApiRouteMetadata } from '../shared/types.ts'
+import type { ApiRequestContext, ApiRouteMetadata } from '../shared/types.ts'
 import { toApiArguments } from './arguments.ts'
 import { toApiError, toApiResponse } from './response.ts'
 
@@ -32,7 +32,7 @@ export interface ApiPipelineRequest {
   query?: Record<string, string | string[]>
   /** Request headers. */
   headers?: Record<string, string | undefined>
-  /** Parsed request body. */
+  /** Parsed request body; it must be a JSON object to reach the handler. */
   body?: unknown
   /** Framework request object, forwarded to the handler untouched. */
   event?: unknown
@@ -45,7 +45,7 @@ export interface ApiRouteTarget {
   /** Handler bound to its controller instance. */
   handler: (...args: unknown[]) => unknown
   /** HTTP method the route matched. */
-  method: ApiMethod
+  method: string
   /** Path parameters captured by the matcher. */
   params: Record<string, string>
 }
@@ -53,6 +53,24 @@ export interface ApiRouteTarget {
 /** Build the JSON body answered when no route matches the request. */
 export function apiNotFoundBody(): ApiResponseBody {
   return { error: { code: 404, message: 'Not Found' } }
+}
+
+/** Build the JSON body answered when the request body is not a JSON object. */
+export function apiBadRequestBody(): ApiResponseBody {
+  return { error: { code: 400, message: 'Bad Request' } }
+}
+
+/**
+ * The body handed to the handler.
+ *
+ * A request without a payload yields an empty object. Every other shape — an
+ * array, a primitive, `null` — is rejected by answering `null`, so the caller
+ * can fail the request before the handler runs.
+ */
+function resolveApiBody(body: unknown): Record<string, unknown> | null {
+  if (body === undefined) return {}
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) return null
+  return body as Record<string, unknown>
 }
 
 /**
@@ -72,13 +90,17 @@ export async function executeApiRoute(
   target: ApiRouteTarget,
   request: ApiPipelineRequest,
 ): Promise<ApiResponseBody> {
+  // The body must be a JSON object: an array or a primitive is a bad request,
+  // answered before the handler runs.
+  const body = resolveApiBody(request.body)
+  if (body === null) return apiBadRequestBody()
+
   const context: ApiRequestContext = {
-    method: target.method,
     path: normalizeApiPath(request.path),
     params: target.params,
     query: request.query ?? {},
     headers: request.headers ?? {},
-    body: request.body,
+    body,
     event: request.event,
   }
 

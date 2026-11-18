@@ -23,12 +23,11 @@ export type { ApiControllerOptions, ApiRouteOptions } from './builder/decorators
 
 // === shared — the metadata type contract ===================================
 
-export { API_METHODS, DEFAULT_API_METHODS } from './shared/types.ts'
+export { DEFAULT_API_METHODS } from './shared/types.ts'
 export type {
   ApiControllerMetadata,
   ApiError,
   ApiErrorResponse,
-  ApiMethod,
   ApiParameterSource,
   ApiRequestContext,
   ApiRouteMetadata,
@@ -55,7 +54,7 @@ export type {
 
 // Route execution: `dispatch` and the HTTP adapters share one pipeline, so a
 // custom adapter matches the built-in behaviour.
-export { apiNotFoundBody, executeApiRoute } from './runtime/pipeline.ts'
+export { apiBadRequestBody, apiNotFoundBody, executeApiRoute } from './runtime/pipeline.ts'
 export type {
   ApiPipelineRequest,
   ApiResponseBody,

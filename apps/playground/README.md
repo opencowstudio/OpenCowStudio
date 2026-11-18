@@ -31,12 +31,14 @@ Behaviour to observe:
 
 - Routes come from `@ApiRoute({ path })` and are relative to the module's
   `prefix`; the source tree only groups controller files.
-- A controller route answers **`POST` only**, so `context.method` is always
-  `POST` and the payload travels in `context.body`.
+- A controller route answers **`POST` only**, so the payload travels in
+  `context.body` as a **parsed JSON object** (`{}` when the request carried no
+  body). A body that is not a JSON object — an array, a primitive, `null` — is
+  rejected with a `400` `Bad Request` error before the handler runs.
 - A controller handler is a plain class method that receives an
-  `ApiRequestContext` (`params`, `query`, `headers`, `body`, `method`, `event`)
+  `ApiRequestContext` (`path`, `params`, `query`, `headers`, `body`, `event`)
   when it declares that parameter, and is invoked without arguments when it
-  declares none; the body is only parsed when the context is injected. The class
+  declares none; the body is only read when the context is injected. The class
   is instantiated once at startup, so instance state is shared across requests.
 - Requests and responses are JSON and every response carries the `200` status:
   a result is sent as-is, an empty result answers `{}`, and a failure answers
@@ -44,11 +46,10 @@ Behaviour to observe:
   framework-agnostic by default, so an unknown id returns `null` (a JSON `null`
   body) instead of 404, and an invalid create payload surfaces as a JSON error.
   Throw `{ code, message }` to identify the failure.
-- A request whose path + method matches no `ApiRoute` answers
-  `{"error":{"code":404,"message":"Not Found"}}` — `GET /api/ctrl/todos`
-  included, since routes only answer `POST`.
-- Any origin may call the API (`Access-Control-Allow-Origin: *`), and `OPTIONS`
-  preflights are answered by the same handler.
+- Only the registered `path + method` pairs reach a controller, so `GET
+  /api/ctrl/todos` (routes only answer `POST`) is answered by Nitro instead.
+- Responses carry `Access-Control-Allow-Origin: *`; the `OPTIONS` preflight is
+  not registered, so it does not reach the handler either.
 - **Registration**: the controller file must sit under the module's `dir`
   (default `server/apis`). Every declared `path + method` is registered as its
   own Nitro route (so it shows up in the server route list), and the router

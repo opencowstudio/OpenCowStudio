@@ -1,6 +1,6 @@
 import { createResolver, useLogger } from '@nuxt/kit'
 import { joinApiPaths, normalizeApiPath } from '@opencowstudio/api-core'
-import type { ApiControllerMetadata, ApiMethod } from '@opencowstudio/api-core'
+import type { ApiControllerMetadata } from '@opencowstudio/api-core'
 
 const MODULE_NAME = '@opencowstudio/nuxt-api'
 
@@ -9,32 +9,33 @@ export interface ApiRouteRegistration {
   /** Full route path, including the mount prefix. */
   route: string
   /** HTTP method the entry answers, upper-cased. */
-  method: ApiMethod
+  method: string
 }
 
 /** The Nitro handler entries produced from one scan. */
 export interface ApiHandlerRegistration {
-  /** Declared routes, each visible in Nitro's route table. */
+  /** Declared routes plus one `OPTIONS` preflight per path. */
   routes: ApiRouteRegistration[]
-  /** Catch-all patterns serving preflight, unknown paths and other verbs. */
-  fallbacks: string[]
   /** Absolute path of the runtime handler module shared by every entry. */
   handler: string
 }
 
 /**
- * Turn every scanned route into its own Nitro entry, plus a catch-all fallback.
+ * Turn every scanned route into its own Nitro entry, plus the `OPTIONS`
+ * preflight of every path.
  *
  * Every declared `path + method` is registered separately so the route shows up
  * in Nitro's route table (devtools, `nitro.scanHandlers`, route rules) exactly
  * like a file-based `server/api` route.
  *
- * All entries — declared routes and fallbacks alike — point at the same runtime
- * module, which matches the request through the router and runs the shared
- * execution pipeline. Adding permission checks or request/response validation
- * therefore still touches a single place, and a request whose `path + method`
- * matches no route (unknown path, `PUT`, ...) is answered by the catch-all with
- * a JSON `404` `ApiError`.
+ * One `OPTIONS` entry per path answers the CORS preflight, so the runtime
+ * handler — the only place that sets the CORS headers — runs before the browser
+ * sends the real request. A path served by several methods still gets a single
+ * preflight entry.
+ *
+ * All entries point at the same runtime module, which matches the request
+ * through the router and runs the shared execution pipeline. Adding permission
+ * checks or request/response validation therefore still touches a single place.
  *
  * Build-time only — this helper must never be imported from the runtime.
  *
@@ -57,20 +58,14 @@ export function registerApiHandlers(
     }
   }
 
-  // Catch-all entries answer what no declared route matched: the OPTIONS
-  // preflight, unknown paths and other verbs. They are skipped when the module
-  // is mounted at the root, where a wildcard would swallow the Nuxt app.
-  const declaredPaths = new Set(routes.map(entry => entry.route))
-  const fallbacks = normalizedPrefix === '/'
-    ? []
-    : [
-        ...(declaredPaths.has(normalizedPrefix) ? [] : [normalizedPrefix]),
-        `${normalizedPrefix}/**`,
-      ]
+  // One preflight per path: a path answered by several methods needs a single
+  // OPTIONS handler, not one per method.
+  const preflights: ApiRouteRegistration[] = [...new Set(routes.map(entry => entry.route))]
+    .map(route => ({ route, method: 'OPTIONS' }))
 
   logger.info(
-    `Registered ${routes.length} api route(s) on "${normalizedPrefix}" (fallbacks: ${fallbacks.join(', ') || 'none'})`,
+    `Registered ${routes.length} api route(s) on "${normalizedPrefix}" (preflight: ${preflights.length})`,
   )
 
-  return { routes, fallbacks, handler: resolver.resolve('../runtime/server/api') }
+  return { routes: [...routes, ...preflights], handler: resolver.resolve('../runtime/server/api') }
 }

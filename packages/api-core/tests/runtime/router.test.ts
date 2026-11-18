@@ -205,7 +205,6 @@ describe('ApiRouter — dispatch', () => {
 
     const context = capture.mock.calls[0]![0]
     expect(context).toEqual({
-      method: 'POST',
       path: '/capture/7',
       params: { id: '7' },
       query: { page: '2' },
@@ -213,6 +212,57 @@ describe('ApiRouter — dispatch', () => {
       body: { hello: 'world' },
       event,
     })
+  })
+
+  it('answers an empty object when the request carries no body', async () => {
+    const capture = vi.fn((context: ApiRequestContext) => context)
+
+    class BlankController {
+      capture = capture
+    }
+
+    const router = new ApiRouter(
+      [
+        controller({
+          className: 'BlankController',
+          name: 'BlankController',
+          routes: [route('capture', '/blank', 'BlankController.capture')],
+        }),
+      ],
+      { BlankController },
+    )
+
+    await router.dispatch({ method: 'POST', path: '/blank' })
+    await router.dispatch({ method: 'POST', path: '/blank', body: {} })
+    await router.dispatch({ method: 'POST', path: '/blank', body: { a: 1 } })
+
+    expect(capture.mock.calls.map(call => call[0].body)).toEqual([{}, {}, { a: 1 }])
+  })
+
+  it('answers a 400 error when the body is not a JSON object', async () => {
+    const capture = vi.fn((context: ApiRequestContext) => context)
+
+    class StrictController {
+      capture = capture
+    }
+
+    const router = new ApiRouter(
+      [
+        controller({
+          className: 'StrictController',
+          name: 'StrictController',
+          routes: [route('capture', '/strict', 'StrictController.capture')],
+        }),
+      ],
+      { StrictController },
+    )
+
+    for (const body of [[1, 2], 'text', 42, true, null]) {
+      await expect(router.dispatch({ method: 'POST', path: '/strict', body }))
+        .resolves.toEqual({ error: { code: 400, message: 'Bad Request' } })
+    }
+
+    expect(capture).not.toHaveBeenCalled()
   })
 
   it('invokes a handler without arguments when it declares no context', async () => {

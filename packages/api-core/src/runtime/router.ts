@@ -2,7 +2,6 @@ import { consola } from 'consola'
 import { joinApiPaths, normalizeApiPath } from '../shared/path.ts'
 import type {
   ApiControllerMetadata,
-  ApiMethod,
   ApiRouteMetadata,
 } from '../shared/types.ts'
 import type { ApiPipelineRequest, ApiResponseBody } from './pipeline.ts'
@@ -59,7 +58,7 @@ export interface ApiRouteEntry {
 /** The result of matching a request against the router. */
 export interface ApiRouteMatch {
   /** HTTP method of the request, upper-cased. */
-  method: ApiMethod
+  method: string
   /** Metadata of the matched controller. */
   controller: ApiControllerMetadata
   /** Metadata of the matched route. */
@@ -192,7 +191,7 @@ export class ApiRouter {
    * @returns The matched route with its decoded path parameters, or null.
    */
   match(method: string, path: string): ApiRouteMatch | null {
-    const normalizedMethod = method.toUpperCase() as ApiMethod
+    const normalizedMethod = method.toUpperCase()
     const normalizedPath = normalizeApiPath(path)
 
     for (const entry of this.#routes) {

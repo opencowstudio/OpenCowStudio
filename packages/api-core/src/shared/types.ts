@@ -7,17 +7,11 @@
 // framework dependency.
 // ---------------------------------------------------------------------------
 
-/** Every HTTP method a request may carry. */
-export const API_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const
-
 /**
  * Methods every controller route answers. `@ApiRoute` cannot override them, so
  * a controller is a collection of `POST` endpoints.
  */
 export const DEFAULT_API_METHODS = ['POST'] as const
-
-/** An HTTP method a route answers. */
-export type ApiMethod = (typeof API_METHODS)[number]
 
 /**
  * A request value that can be injected into a handler parameter.
@@ -41,7 +35,7 @@ export interface ApiRouteMetadata {
   /** Name of the controller method that handles the request. */
   handler: string
   /** HTTP methods the handler answers; always {@link DEFAULT_API_METHODS}. */
-  methods: ApiMethod[]
+  methods: string[]
   /**
    * Parameters of the handler, in declaration order.
    *
@@ -82,9 +76,7 @@ export interface ApiControllerMetadata {
 }
 
 /** The request handed to a route handler. */
-export interface ApiRequestContext<TBody = unknown> {
-  /** HTTP method of the request, upper-cased. */
-  method: ApiMethod
+export interface ApiRequestContext {
   /** Route-relative request path, e.g. `/42`. */
   path: string
   /** Path parameters captured from the route pattern. */
@@ -93,8 +85,14 @@ export interface ApiRequestContext<TBody = unknown> {
   query: Record<string, string | string[]>
   /** Request headers, lower-cased by the HTTP adapter. */
   headers: Record<string, string | undefined>
-  /** Parsed request body, when the HTTP adapter parsed one. */
-  body: TBody
+  /**
+   * Parsed request body, always a JSON object.
+   *
+   * A request without a body yields `{}`. Any other shape — an array, a
+   * primitive, `null` — is rejected before the handler runs, with a
+   * `400 Bad Request` error body.
+   */
+  body: Record<string, unknown>
   /** Framework request object (the H3 event under Nitro); opaque to the core. */
   event?: unknown
 }

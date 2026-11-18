@@ -29,6 +29,11 @@ export interface ApiControllerOptions {
  * name is `${className}.${handler}`, and only the path(s) and the
  * description are configurable. Declaring several paths yields one route entry
  * per path.
+ *
+ * Request and response DTOs are not options: they are read from the handler
+ * signature. A parameter declaring a named type other than
+ * `ApiRequest` receives the request body parsed by the schema of that
+ * name, and a named return type is recorded as the response type.
  */
 export interface ApiRouteOptions {
   /** full path(s) of the route, relative to the mount prefix; required */
@@ -51,7 +56,7 @@ export function ApiController(_options: ApiControllerOptions = {}): <C extends a
 // === @ApiRoute — marks a method as a route handler (static marker) =========
 
 // The parameter list is `any[]` on purpose: a handler may declare any signature
-// (e.g. `todos(context: ApiRequestContext)`), and `ClassMethodDecoratorContext`
+// (e.g. `todos(context: ApiRequest)`), and `ClassMethodDecoratorContext`
 // itself constrains its `Value` parameter to `(this: C, ...args: any) => any`.
 // A stricter list would reject every handler that takes arguments.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

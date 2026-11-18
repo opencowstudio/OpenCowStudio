@@ -45,7 +45,7 @@ const ROUTE_DECORATOR = 'ApiRoute'
  * case to the runtime resolver).
  */
 const PARAMETER_SOURCES: Record<string, ApiParameterSource> = {
-  ApiRequestContext: 'context',
+  ApiRequest: 'request',
 }
 
 /** Options controlling how a single controller's metadata is assembled. */
@@ -183,6 +183,7 @@ export function parseApiRoute(
   const context = `route ${className}.${handler}`
   const description = resolveDescription(options.description, `${context}.description`)
   const parameters = resolveParameters(member, sourceFile, context)
+  const output = resolveOutputName(member)
 
   return resolvePaths(options.path, `${context}.path`).map(path => ({
     handler,
@@ -190,6 +191,7 @@ export function parseApiRoute(
     parameters,
     path,
     name: `${className}.${handler}`,
+    ...(output ? { output } : {}),
     description,
   }))
 }
@@ -553,13 +555,31 @@ function resolvePaths(value: unknown, context: string): string[] {
 const PARAMETER_TYPE_NAMES = Object.keys(PARAMETER_SOURCES)
 
 /**
+ * Type names that are never an output schema, even though a handler may return
+ * them. Recorded as `output` only when the return type is a schema type name.
+ */
+const NON_OUTPUT_TYPE_NAMES = new Set([
+  'Array',
+  'Map',
+  'Omit',
+  'Partial',
+  'Pick',
+  'Promise',
+  'ReadonlyArray',
+  'Record',
+  'Set',
+])
+
+/**
  * Resolve the parameters injected into a route handler, in declaration order.
  *
  * The signature is read statically, because types are erased at runtime: each
- * parameter is injected according to its declared type (see
+ * parameter receives a protocol value selected by its declared type (see
  * {@link PARAMETER_SOURCES}), so the order and the number of parameters are
- * free. A parameter whose type is not injectable is rejected instead of being
- * silently left `undefined`.
+ * free. A parameter declaring any other named type asks for the request JSON
+ * shaped into that type: the body is validated by the schema of that name and
+ * the parsed value is injected. A parameter whose type is neither is rejected
+ * instead of being silently left `undefined`.
  */
 function resolveParameters(
   member: ts.MethodDeclaration,
@@ -573,21 +593,67 @@ function resolveParameters(
       fail(`Invalid handler signature for ${context} at ${position}: a @ApiRoute handler cannot declare a rest parameter.`)
     }
 
-    const source = parameter.type ? resolveParameterSource(parameter.type) : undefined
-    if (!source) {
-      fail(`Invalid handler signature for ${context} at ${position}: every parameter must be typed as ${PARAMETER_TYPE_NAMES.join(', ')}.`)
+    const name = parameterName(parameter.name)
+    const resolved = parameter.type ? resolveParameter(parameter.type, context, name) : undefined
+    if (!resolved) {
+      fail(
+        `Invalid handler signature for ${context} at ${position}: every parameter must be typed as `
+        + `${PARAMETER_TYPE_NAMES.join(', ')} or as an input type name, but "${name}" declares an unsupported type.`,
+      )
     }
 
-    return { name: parameterName(parameter.name), source }
+    return resolved.inputTypeName ? { name, ...resolved } : { name, source: resolved.source }
   })
 }
 
-/** Read the injected source from a parameter type annotation. */
-function resolveParameterSource(node: ts.TypeNode): ApiParameterSource | undefined {
+/** Resolve the injected source (and input type name) from a parameter type. */
+function resolveParameter(
+  node: ts.TypeNode,
+  context: string,
+  parameterName: string,
+): { source: ApiParameterSource; inputTypeName?: string } | undefined {
   if (!ts.isTypeReferenceNode(node)) return undefined
 
-  const name = ts.isIdentifier(node.typeName) ? node.typeName.text : node.typeName.right.text
-  return Object.hasOwn(PARAMETER_SOURCES, name) ? PARAMETER_SOURCES[name] : undefined
+  const name = typeReferenceName(node)
+  const known = PARAMETER_SOURCES[name]
+  if (known) return { source: known }
+
+  if (node.typeArguments && node.typeArguments.length > 0) {
+    fail(`Invalid input parameter "${parameterName}" for ${context}: an input type cannot be generic ("${name}<...>").`)
+  }
+
+  return { source: 'input', inputTypeName: name }
+}
+
+/**
+ * Read the output schema name a handler returns, used to describe the response.
+ *
+ * The declared return type is unwrapped from `Promise<...>`; anything that is
+ * not a plain named type (a primitive, an array, a union, a utility type) is
+ * left undocumented instead of inventing a name.
+ */
+function resolveOutputName(member: ts.MethodDeclaration): string | undefined {
+  const unwrapped = unwrapPromiseType(member.type)
+  if (!unwrapped || !ts.isTypeReferenceNode(unwrapped)) return undefined
+  if (unwrapped.typeArguments && unwrapped.typeArguments.length > 0) return undefined
+
+  const name = typeReferenceName(unwrapped)
+  return NON_OUTPUT_TYPE_NAMES.has(name) ? undefined : name
+}
+
+/** Unwrap `Promise<T>` into `T`; every other type node is returned as-is. */
+function unwrapPromiseType(node: ts.TypeNode | undefined): ts.TypeNode | undefined {
+  if (!node || !ts.isTypeReferenceNode(node)) return undefined
+  if (typeReferenceName(node) !== 'Promise') return node
+
+  const typeArguments = node.typeArguments
+  if (!typeArguments || typeArguments.length !== 1) return undefined
+  return typeArguments[0]
+}
+
+/** Read the bare name of a type reference, e.g. `User` out of `ns.User`. */
+function typeReferenceName(node: ts.TypeReferenceNode): string {
+  return ts.isIdentifier(node.typeName) ? node.typeName.text : node.typeName.right.text
 }
 
 /** Read a parameter's declared name; a destructuring pattern has none. */

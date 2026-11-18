@@ -26,10 +26,14 @@ export type { ApiControllerOptions, ApiRouteOptions } from './builder/decorators
 export { DEFAULT_API_METHODS } from './shared/types.ts'
 export type {
   ApiControllerMetadata,
+  ApiValidationIssue,
+  ApiSchemaRegistry,
+  ApiValidationResult,
+  ApiSchema,
   ApiError,
   ApiErrorResponse,
   ApiParameterSource,
-  ApiRequestContext,
+  ApiRequest,
   ApiRouteMetadata,
   ApiRouteParameter,
 } from './shared/types.ts'
@@ -56,14 +60,20 @@ export type {
 // custom adapter matches the built-in behaviour.
 export { apiBadRequestBody, apiNotFoundBody, executeApiRoute } from './runtime/pipeline.ts'
 export type {
-  ApiPipelineRequest,
-  ApiResponseBody,
+  ApiExecutionOptions,
+  ApiHttpRequest,
+  ApiResponse,
   ApiRouteTarget,
 } from './runtime/pipeline.ts'
 
 // Handler argument injection: the same values are injected by `dispatch` and by
 // the HTTP adapters, so a custom adapter matches the built-in behaviour.
 export { toApiArguments } from './runtime/arguments.ts'
+
+// Schema validation: the request JSON is parsed by the schema registered under the
+// name a handler parameter declares, whatever validator the application uses.
+export { formatApiIssuePath, formatApiIssues, isApiSchema, resolveApiInput, validateApiValue } from './runtime/schema.ts'
+export type { ApiValidationError } from './runtime/schema.ts'
 
 // JSON response helpers: the same envelope is used by `ApiRouter.dispatch` and
 // by the HTTP adapters, so a custom adapter matches the built-in behaviour.

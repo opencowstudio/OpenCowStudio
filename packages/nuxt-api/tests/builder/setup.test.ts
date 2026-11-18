@@ -19,7 +19,7 @@ const controller: ApiControllerMetadata = {
   description: '',
   modulePath: '/server/apis/user.ts',
   routes: [
-    { handler: 'show', methods: ['GET'], parameters: [{ name: 'context', source: 'context' }], path: '/users/:id', name: 'UserController.show', description: '' },
+    { handler: 'show', methods: ['GET'], parameters: [{ name: 'request', source: 'request' }], path: '/users/:id', name: 'UserController.show', description: '' },
   ],
 }
 
@@ -72,6 +72,7 @@ describe('setupModule', () => {
     const nuxt = makeNuxt()
     await setupModule(options, nuxt)
 
+    // The schema directory is not an option: the manifest derives `<dir>/schemas`.
     expect(registerApiManifest).toHaveBeenCalledWith(nuxt, 'server/apis', '/api')
     expect(addServerPlugin).toHaveBeenCalledWith('../runtime/plugins/bootstrap')
     expect(addServerImports).toHaveBeenCalledWith([

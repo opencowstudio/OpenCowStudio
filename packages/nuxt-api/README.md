@@ -14,6 +14,15 @@ Nuxt/Nitro application.
 - The manifest also carries the controller class map (`apiControllersTypeMap`)
   and the normalised mount prefix, so the route table and the HTTP entry cannot
   disagree on either.
+- Schema files are scanned from the `schemas` directory inside `dir`
+  (`server/apis/schemas/**/*.ts` with the defaults, no separate option) and
+  imported into the manifest, spread into one registry (`apiSchemas`) keyed by
+  export name. A route handler parameter declaring a named type other than
+  `ApiRequest` receives the request JSON parsed by the schema of that name; a
+  named return type is recorded as the output schema. Nothing is validated
+  statically here: the schema is a runtime value, so any Standard Schema v1
+  implementation (zod 4, valibot 1.x, ...) works, and an invalid body is answered
+  with a `400` before the handler runs.
 - At runtime a Nitro plugin imports the manifest directly, builds the
   `ApiRouter` from it — instantiating every controller and binding each route
   handler — and injects the router service (`runtime/utils/router.ts`):
@@ -48,7 +57,8 @@ continues.
 export default defineNuxtConfig({
   modules: [
     ['@opencowstudio/nuxt-api', {
-      // Controllers are scanned from this directory (relative to the Nuxt root).
+      // Controllers are scanned from this directory (relative to the Nuxt root);
+      // Input / output schemas are scanned from its `schemas` subdirectory.
       dir: 'server/apis',
       // Prefix prepended to every controller route when it is registered.
       prefix: '/api',
@@ -64,7 +74,7 @@ import { ApiController, ApiRoute } from '@opencowstudio/api-core'
 @ApiController()
 export class UserController {
   @ApiRoute({ path: '/users/:id' })
-  async show({ params }: ApiRequestContext): Promise<unknown> {
+  async show({ params }: ApiRequest): Promise<unknown> {
     return { id: params.id }
   }
 }
@@ -97,7 +107,7 @@ HTTP status stays `200`.
 
 ```ts
 @ApiRoute({ path: '/ctrl/echo' })
-echo({ body }: ApiRequestContext): unknown {
+echo({ body }: ApiRequest): unknown {
   return body
 }
 
@@ -108,7 +118,7 @@ missing(): unknown {
 ```
 
 Handler parameters are injected by their declared type, in declaration order.
-`ApiRequestContext` is the only injectable type today, so a handler either
+`ApiRequest` is the only injectable type today, so a handler either
 declares it or takes no parameter at all — and nothing is read from the request
 otherwise (the body is only parsed when the context is injected):
 
@@ -123,7 +133,7 @@ export class TodoController {
 
   // Declared parameter: receives the request context.
   @ApiRoute({ path: '/ctrl/todos' })
-  todos({ body }: ApiRequestContext): unknown {
+  todos({ body }: ApiRequest): unknown {
     return createTodo(body)
   }
 }

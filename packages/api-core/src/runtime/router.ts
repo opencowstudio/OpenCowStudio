@@ -2,9 +2,10 @@ import { consola } from 'consola'
 import { joinApiPaths, normalizeApiPath } from '../shared/path.ts'
 import type {
   ApiControllerMetadata,
+  ApiSchemaRegistry,
   ApiRouteMetadata,
 } from '../shared/types.ts'
-import type { ApiPipelineRequest, ApiResponseBody } from './pipeline.ts'
+import type { ApiHttpRequest, ApiResponse } from './pipeline.ts'
 import { apiNotFoundBody, executeApiRoute } from './pipeline.ts'
 
 // Tagged logger so the core stays framework-agnostic (no Nuxt dep).
@@ -74,7 +75,7 @@ export interface ApiRouteMatch {
 }
 
 /** The request handed to {@link ApiRouter.dispatch}. */
-export type ApiDispatchRequest = ApiPipelineRequest
+export type ApiDispatchRequest = ApiHttpRequest
 
 /**
  * The JSON object answered by {@link ApiRouter.dispatch}.
@@ -83,7 +84,7 @@ export type ApiDispatchRequest = ApiPipelineRequest
  * `error` object (`{ error: { code, message } }`) when the request failed; see
  * {@link getApiError} to read it.
  */
-export type ApiDispatchResponse = ApiResponseBody
+export type ApiDispatchResponse = ApiResponse
 
 /** Matches a `:name` path segment. */
 const PARAM_SEGMENT_RE = /^:([A-Za-z_$][A-Za-z0-9_$]*)$/
@@ -143,11 +144,15 @@ export class ApiRouter {
   readonly #routes: ApiRouteEntry[] = []
   /** Every occupied `METHOD path` pair, used to reject duplicate routes. */
   readonly #pairs = new Set<string>()
+  /** Input / output schemas injected into handlers, keyed by type name. */
+  #schemas: ApiSchemaRegistry = {}
 
   constructor(
     controllers: readonly ApiControllerMetadata[] = [],
     classes: ApiControllerClassMap = {},
+    schemas: ApiSchemaRegistry = {},
   ) {
+    this.#schemas = schemas
     for (const metadata of controllers) this.#register(metadata, classes)
 
     // Static segments win over parameter segments: `/users/me` must match
@@ -222,7 +227,7 @@ export class ApiRouter {
   /**
    * Match the request and invoke the handler, answering the JSON response.
    *
-   * The handler receives a fully-populated {@link ApiRequestContext} only when
+   * The handler receives a fully-populated {@link ApiRequest} only when
    * its method declares that parameter; otherwise it is called without
    * arguments.
    *
@@ -251,6 +256,7 @@ export class ApiRouter {
         params: match.params,
       },
       request,
+      { schemas: this.#schemas },
     )
   }
 

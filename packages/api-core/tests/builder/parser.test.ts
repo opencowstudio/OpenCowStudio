@@ -109,12 +109,12 @@ export class PostController {
 
   it('records the injected context parameter of every route', () => {
     const file = writeSource(`
-import { ApiController, ApiRoute, type ApiRequestContext } from '@opencowstudio/api-core'
+import { ApiController, ApiRoute, type ApiRequest } from '@opencowstudio/api-core'
 
 @ApiController()
 export class SignatureController {
   @ApiRoute({ path: '/with' })
-  withContext(context: ApiRequestContext): unknown {
+  withContext(context: ApiRequest): unknown {
     return context
   }
 
@@ -126,26 +126,91 @@ export class SignatureController {
 `)
     const routes = parseApiControllers([file])[0]?.routes
     expect(routes?.map(route => route.parameters)).toEqual([
-      [{ name: 'context', source: 'context' }],
+      [{ name: 'context', source: 'request' }],
       [],
     ])
   })
 
   it('records a destructured parameter without a name', () => {
     const file = writeSource(`
-import { ApiController, ApiRoute, type ApiRequestContext } from '@opencowstudio/api-core'
+import { ApiController, ApiRoute, type ApiRequest } from '@opencowstudio/api-core'
 
 @ApiController()
 export class DestructuredController {
   @ApiRoute({ path: '/destructured' })
-  destructured({ params }: ApiRequestContext): unknown {
+  destructured({ params }: ApiRequest): unknown {
     return params
   }
 }
 `)
     expect(parseApiControllers([file])[0]?.routes[0]?.parameters).toEqual([
-      { name: '<destructured>', source: 'context' },
+      { name: '<destructured>', source: 'request' },
     ])
+  })
+
+  it('records any number of input parameters, in declaration order', () => {
+    const file = writeSource(`
+import { ApiController, ApiRoute, type ApiRequest } from '@opencowstudio/api-core'
+
+@ApiController()
+export class InputController {
+  @ApiRoute({ path: '/input' })
+  many(first: CreateUserInput, context: ApiRequest, second: UpdateUserInput): unknown {
+    return [first, context, second]
+  }
+}
+`)
+    expect(parseApiControllers([file])[0]?.routes[0]?.parameters).toEqual([
+      { name: 'first', source: 'input', inputTypeName: 'CreateUserInput' },
+      { name: 'context', source: 'request' },
+      { name: 'second', source: 'input', inputTypeName: 'UpdateUserInput' },
+    ])
+  })
+
+  it('records the output schema from the declared return type', () => {
+    const file = writeSource(`
+import { ApiController, ApiRoute } from '@opencowstudio/api-core'
+
+@ApiController()
+export class ResponseController {
+  @ApiRoute({ path: '/sync' })
+  sync(): UserOutput {
+    return null as never
+  }
+
+  @ApiRoute({ path: '/async' })
+  async asyncRoute(): Promise<UserOutput> {
+    return null as never
+  }
+
+  @ApiRoute({ path: '/anonymous' })
+  async anonymous(): Promise<unknown> {
+    return null
+  }
+
+  @ApiRoute({ path: '/list' })
+  async list(): Promise<UserOutput[]> {
+    return []
+  }
+}
+`)
+    const routes = parseApiControllers([file])[0]?.routes
+    expect(routes?.map(route => route.output)).toEqual(['UserOutput', 'UserOutput', undefined, undefined])
+  })
+
+  it('rejects a generic input parameter', () => {
+    const file = writeSource(`
+import { ApiController, ApiRoute } from '@opencowstudio/api-core'
+
+@ApiController()
+export class GenericController {
+  @ApiRoute({ path: '/generic' })
+  generic(input: Page<UserOutput>): unknown {
+    return input
+  }
+}
+`)
+    expect(() => parseApiControllers([file])).toThrow(/an input type cannot be generic/)
   })
 
   it('rejects a parameter whose type is not injectable', () => {
@@ -160,17 +225,17 @@ export class WrongController {
   }
 }
 `)
-    expect(() => parseApiControllers([file])).toThrow(/must be typed as ApiRequestContext/)
+    expect(() => parseApiControllers([file])).toThrow(/must be typed as ApiRequest/)
   })
 
   it('rejects a rest parameter', () => {
     const file = writeSource(`
-import { ApiController, ApiRoute, type ApiRequestContext } from '@opencowstudio/api-core'
+import { ApiController, ApiRoute, type ApiRequest } from '@opencowstudio/api-core'
 
 @ApiController()
 export class ManyController {
   @ApiRoute({ path: '/many' })
-  many(...args: ApiRequestContext[]): unknown {
+  many(...args: ApiRequest[]): unknown {
     return args
   }
 }

@@ -26,9 +26,9 @@ export async function setupModule(options: ModuleOptions, nuxt: Nuxt): Promise<v
   const resolver = createResolver(import.meta.url)
 
   // Scan the controller source files, resolve each controller into an
-  // `ApiControllerMetadata`, and bake the collection (plus the mount prefix)
-  // into a server-only manifest at build time. The runtime imports the typed
-  // metadata directly.
+  // `ApiControllerMetadata`, and bake the collection (plus the mount prefix and
+  // the schema registry) into a server-only manifest at build time. The runtime
+  // imports the typed metadata directly.
   const { controllers } = await registerApiManifest(nuxt, options.dir!, options.prefix!)
 
   // Register the Nitro plugin that instantiates the router from the manifest

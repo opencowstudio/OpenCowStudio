@@ -1,6 +1,6 @@
 import { consola } from 'consola'
 import { normalizeApiPath } from '../shared/path.ts'
-import type { ApiRequestContext, ApiRouteMetadata } from '../shared/types.ts'
+import type { ApiSchemaRegistry, ApiRequest, ApiRouteMetadata } from '../shared/types.ts'
 import { toApiArguments } from './arguments.ts'
 import { toApiError, toApiResponse } from './response.ts'
 
@@ -20,10 +20,10 @@ const logger = consola.withTag('api-router')
 // ---------------------------------------------------------------------------
 
 /** The JSON body answered by one API request. */
-export type ApiResponseBody = { [key: string]: unknown }
+export type ApiResponse = { [key: string]: unknown }
 
 /** The request handed to the pipeline, independent of the HTTP framework. */
-export interface ApiPipelineRequest {
+export interface ApiHttpRequest {
   /** HTTP method of the request; case-insensitive. */
   method: string
   /** Path of the request, relative to the mount prefix. */
@@ -36,6 +36,18 @@ export interface ApiPipelineRequest {
   body?: unknown
   /** Framework request object, forwarded to the handler untouched. */
   event?: unknown
+}
+
+/** Options shared by every route execution entry point. */
+export interface ApiExecutionOptions {
+  /**
+   * Input / output schemas keyed by type name, generated at build time.
+   *
+   * A route whose handler declares input parameters cannot be executed without
+   * it: the request JSON is validated against the schema of the declared type
+   * name.
+   */
+  schemas?: ApiSchemaRegistry
 }
 
 /** A matched route, ready to be executed. */
@@ -51,12 +63,12 @@ export interface ApiRouteTarget {
 }
 
 /** Build the JSON body answered when no route matches the request. */
-export function apiNotFoundBody(): ApiResponseBody {
+export function apiNotFoundBody(): ApiResponse {
   return { error: { code: 404, message: 'Not Found' } }
 }
 
 /** Build the JSON body answered when the request body is not a JSON object. */
-export function apiBadRequestBody(): ApiResponseBody {
+export function apiBadRequestBody(): ApiResponse {
   return { error: { code: 400, message: 'Bad Request' } }
 }
 
@@ -77,7 +89,7 @@ function resolveApiBody(body: unknown): Record<string, unknown> | null {
  * Execute a matched route and answer its JSON body.
  *
  * Steps, in order:
- *  1. build the {@link ApiRequestContext} from the request,
+ *  1. build the {@link ApiRequest} from the raw HTTP request,
  *  2. run the pre-handler phase — permission checks and request validation,
  *  3. invoke the handler with the values its parameters declare,
  *  4. run the post-handler phase — response validation,
@@ -88,35 +100,35 @@ function resolveApiBody(body: unknown): Record<string, unknown> | null {
  */
 export async function executeApiRoute(
   target: ApiRouteTarget,
-  request: ApiPipelineRequest,
-): Promise<ApiResponseBody> {
+  http: ApiHttpRequest,
+  options: ApiExecutionOptions = {},
+): Promise<ApiResponse> {
   // The body must be a JSON object: an array or a primitive is a bad request,
   // answered before the handler runs.
-  const body = resolveApiBody(request.body)
+  const body = resolveApiBody(http.body)
   if (body === null) return apiBadRequestBody()
 
-  const context: ApiRequestContext = {
-    path: normalizeApiPath(request.path),
+  const request: ApiRequest = {
+    path: normalizeApiPath(http.path),
     params: target.params,
-    query: request.query ?? {},
-    headers: request.headers ?? {},
+    query: http.query ?? {},
+    headers: http.headers ?? {},
     body,
-    event: request.event,
+    event: http.event,
   }
 
   try {
-    // Pre-handler phase: permission checks, request validation, ... (context,
+    // Pre-handler phase: permission checks, request validation, ... (request,
     // target.route and target.handler are all available here).
 
-    const sources = target.route.parameters.map(parameter => parameter.source)
-    const value = await target.handler(...toApiArguments(context, sources))
+    const value = await target.handler(...toApiArguments(request, target.route.parameters, options.schemas))
 
     // Post-handler phase: response validation, ... (`value` is the result).
 
     return toApiResponse(value)
   } catch (thrown) {
     const error = toApiError(thrown)
-    logger.error(`Api route "${target.method} ${context.path}" failed: ${error.code} ${error.message}`)
+    logger.error(`Api route "${target.method} ${request.path}" failed: ${error.code} ${error.message}`)
     return { error }
   }
 }

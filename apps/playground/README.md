@@ -36,7 +36,7 @@ Behaviour to observe:
   body). A body that is not a JSON object — an array, a primitive, `null` — is
   rejected with a `400` `Bad Request` error before the handler runs.
 - A controller handler is a plain class method that receives an
-  `ApiRequestContext` (`path`, `params`, `query`, `headers`, `body`, `event`)
+  `ApiRequest` (`path`, `params`, `query`, `headers`, `body`, `event`)
   when it declares that parameter, and is invoked without arguments when it
   declares none; the body is only read when the context is injected. The class
   is instantiated once at startup, so instance state is shared across requests.

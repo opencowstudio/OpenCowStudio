@@ -24,7 +24,8 @@
     "@opencowstudio/pg-core": "workspace:*",
     "nuxt": "^4.4.6",
     "vue": "^3.5.34",
-    "vue-router": "^5.0.7"
+    "vue-router": "^5.0.7",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "vitest": "^4.1.7"

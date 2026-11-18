@@ -31,6 +31,13 @@ function writeController(relativePath = 'server/apis/user.ts'): void {
   writeFileSync(file, controllerSource)
 }
 
+/** Write one schema module below the temporary Nuxt root. */
+function writeSchema(relativePath = 'server/apis/schemas/user.ts'): void {
+  const file = join(dir!, relativePath)
+  mkdirSync(dirname(file), { recursive: true })
+  writeFileSync(file, 'export const CreateUserInput = {}\n')
+}
+
 /** The generated manifest contents of the current `addTemplate` call. */
 function manifestContents(): string {
   const options = (addTemplate as ReturnType<typeof vi.fn>).mock.calls[0]![0]
@@ -119,6 +126,28 @@ describe('registerApiManifest', () => {
 
     expect(contents).toContain('export const apiControllersMetadata = []')
     expect(contents).toContain('export const apiControllersTypeMap = {}')
+    expect(contents).toContain('export const apiSchemas = {}')
     expect(contents).not.toContain('import {')
   })
+
+  it('imports every schema module and spreads its exports into the registry', async () => {
+    writeController()
+    writeSchema('server/apis/schemas/user.ts')
+
+    await registerApiManifest(makeNuxt(), 'server/apis', '/api')
+
+    const contents = manifestContents()
+    expect(contents).toContain("import * as apiSchemas0 from '~~/server/apis/schemas/user.ts'")
+    expect(contents).toContain('export const apiSchemas = { ...apiSchemas0 }')
+  })
+
+  it('derives the schema directory from a custom controller directory', async () => {
+    writeController('app/controllers/user.ts')
+    writeSchema('app/controllers/schemas/user.ts')
+
+    await registerApiManifest(makeNuxt(), 'app/controllers', '/api')
+
+    expect(manifestContents()).toContain("import * as apiSchemas0 from '~~/app/controllers/schemas/user.ts'")
+  })
+
 })

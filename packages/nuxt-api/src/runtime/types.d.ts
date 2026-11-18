@@ -18,4 +18,13 @@ declare module '#api-manifest' {
    * is only known at build time.
    */
   export const apiControllersTypeMap: import('@opencowstudio/api-core').ApiControllerClassMap
+
+  /**
+   * Every value exported by the scanned schema modules, keyed by export name.
+   *
+   * A route handler receives the body parsed by the schema registered under the
+   * name it declares, so a schema's export name and its parameter type name must
+   * match. Entries that are not schemas are ignored at runtime.
+   */
+  export const apiSchemas: import('@opencowstudio/api-core').ApiSchemaRegistry
 }

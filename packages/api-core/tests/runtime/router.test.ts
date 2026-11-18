@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { ApiRouter, compileApiPath } from '../../src/index.ts'
 import type {
   ApiControllerMetadata,
-  ApiRequestContext,
+  ApiRequest,
   ApiRouteMetadata,
   ApiRouteParameter,
 } from '../../src/index.ts'
@@ -23,7 +23,7 @@ function route(
   handler: string,
   path: string,
   name = `UserController.${handler}`,
-  parameters: ApiRouteParameter[] = [{ name: 'context', source: 'context' }],
+  parameters: ApiRouteParameter[] = [{ name: 'request', source: 'request' }],
 ): ApiRouteMetadata {
   return { handler, methods: ['GET', 'POST'], parameters, path, name, description: '' }
 }
@@ -39,7 +39,7 @@ const controllers: ApiControllerMetadata[] = [
 ]
 
 class UserController {
-  show(context: ApiRequestContext): unknown {
+  show(context: ApiRequest): unknown {
     return { id: context.params.id }
   }
 
@@ -47,7 +47,7 @@ class UserController {
     return 'me'
   }
 
-  create(context: ApiRequestContext): unknown {
+  create(context: ApiRequest): unknown {
     return { created: context.body }
   }
 }
@@ -174,7 +174,7 @@ describe('ApiRouter — dispatch', () => {
   })
 
   it('invokes the handler with the request context', async () => {
-    const capture = vi.fn((context: ApiRequestContext) => context)
+    const capture = vi.fn((context: ApiRequest) => context)
 
     class CaptureController {
       capture = capture
@@ -215,7 +215,7 @@ describe('ApiRouter — dispatch', () => {
   })
 
   it('answers an empty object when the request carries no body', async () => {
-    const capture = vi.fn((context: ApiRequestContext) => context)
+    const capture = vi.fn((context: ApiRequest) => context)
 
     class BlankController {
       capture = capture
@@ -240,7 +240,7 @@ describe('ApiRouter — dispatch', () => {
   })
 
   it('answers a 400 error when the body is not a JSON object', async () => {
-    const capture = vi.fn((context: ApiRequestContext) => context)
+    const capture = vi.fn((context: ApiRequest) => context)
 
     class StrictController {
       capture = capture

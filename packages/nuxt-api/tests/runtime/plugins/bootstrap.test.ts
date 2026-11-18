@@ -18,7 +18,7 @@ const controller: ApiControllerMetadata = {
   description: '',
   modulePath: '/server/apis/user.ts',
   routes: [
-    { handler: 'show', methods: ['GET', 'POST'], parameters: [{ name: 'context', source: 'context' }], path: '/users/:id', name: 'UserController.show', description: '' },
+    { handler: 'show', methods: ['GET', 'POST'], parameters: [{ name: 'request', source: 'request' }], path: '/users/:id', name: 'UserController.show', description: '' },
   ],
 }
 
@@ -32,6 +32,7 @@ class UserController {
 function mockRuntime(
   metadata: ApiControllerMetadata[],
   types: Record<string, unknown>,
+  schemas: Record<string, unknown> = {},
 ): void {
   vi.doMock('nitropack/runtime', () => ({
     defineNitroPlugin: (handler: () => void) => handler,
@@ -40,6 +41,7 @@ function mockRuntime(
     apiPrefix: '/api',
     apiControllersMetadata: metadata,
     apiControllersTypeMap: types,
+    apiSchemas: schemas,
   }))
 }
 
@@ -79,6 +81,41 @@ describe('bootstrap nitro plugin', () => {
 
     const { useApiRouter } = await import('../../../src/runtime/utils/router')
     expect(() => useApiRouter()).toThrow(/did not register it/)
+  })
+
+  it('injects the request JSON parsed by a schema registered in the manifest', async () => {
+    vi.resetModules()
+
+    const schemaController: ApiControllerMetadata = {
+      className: 'TodoController',
+      name: 'TodoController',
+      path: '/',
+      description: '',
+      modulePath: '/server/apis/todo.ts',
+      routes: [
+        { handler: 'create', methods: ['POST'], parameters: [{ name: 'input', source: 'input', inputTypeName: 'CreateTodoInput' }], path: '/todos', name: 'TodoController.create', description: '' },
+      ],
+    }
+
+    class TodoController {
+      create(input: unknown): unknown {
+        return input
+      }
+    }
+
+    mockRuntime(
+      [schemaController],
+      { TodoController },
+      { CreateTodoInput: { '~standard': { version: 1, validate: (value: unknown) => ({ value }) } } },
+    )
+
+    const mod = await import(bootstrapPath)
+    const handler = mod.default as () => void
+    handler()
+
+    const { useApiRouter } = await import('../../../src/runtime/utils/router')
+    await expect(useApiRouter().dispatch({ method: 'POST', path: '/todos', body: { title: 'hi' } }))
+      .resolves.toEqual({ title: 'hi' })
   })
 
   it('fails startup when a controller class is missing from the manifest', async () => {
